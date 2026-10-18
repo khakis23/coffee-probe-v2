@@ -1,0 +1,10 @@
+# Checked-in baseline config. `sdkconfig` itself is generated and git-ignored;
+# change settings with `idf.py menuconfig`, then copy what matters back here.
+
+CONFIG_IDF_TARGET="esp32c3"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Console on UART0 (dev boards with a USB-UART bridge) and on the native
+# USB-Serial-JTAG port (XIAO, SuperMini, etc.) so logs work on any C3 board.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y

@@ -1,0 +1,15 @@
+# ESP-IDF
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock.bak
+
+# CLion
+cmake-build-*/
+.idea/
+
+# Misc
+.DS_Store
+*.swp
+.cache/
