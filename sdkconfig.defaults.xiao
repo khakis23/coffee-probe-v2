@@ -1,0 +1,10 @@
+# Seeed Studio XIAO ESP32C3. Layered on top of sdkconfig.defaults when PROBE_BOARD=xiao
+# (the default; see the top-level CMakeLists.txt). Only applies to a freshly generated sdkconfig.
+
+# Firmware pin map: board/board.hpp uses this to pick the XIAO table.
+CONFIG_PROBE_BOARD_XIAO_C3=y
+
+# Console on the native USB-Serial-JTAG port only. The XIAO has no USB-UART chip, and
+# keeping UART0 off frees GPIO20 (UART0 RX) for the BACK button.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
