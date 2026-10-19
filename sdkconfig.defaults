@@ -8,3 +8,89 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 # USB-Serial-JTAG port (XIAO, SuperMini, etc.) so logs work on any C3 board.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+
+# ---------------------------------------------------------------------------
+# Reliability (#5). See docs/architecture.md -> "Reliability design".
+# Every symbol below was checked against the ESP-IDF v5.3.1 Kconfig tree.
+# Lines marked "verify on v6" may be renamed or removed in IDF v6.0 (#1).
+# ---------------------------------------------------------------------------
+
+# --- Partition table -------------------------------------------------------
+# Custom table so we get a coredump partition; layout is commented in the CSV.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- Task watchdog ---------------------------------------------------------
+# A task that stops yielding for 5 s is a hang: panic so we reboot and leave a
+# coredump, instead of sitting frozen in front of a non-technical user.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5
+# Watching the idle task catches any task that starves the scheduler, even one
+# that never subscribed to the WDT itself.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+
+# --- Interrupt watchdog ----------------------------------------------------
+# Catches ISRs or critical sections that keep interrupts blocked too long.
+CONFIG_ESP_INT_WDT=y
+CONFIG_ESP_INT_WDT_TIMEOUT_MS=300
+
+# --- Panic handler ---------------------------------------------------------
+# Print registers + backtrace, then reboot. Halting would leave the probe dead
+# until someone power-cycles it.
+CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y
+# Short pause so the panic text is still on screen in the monitor before reset.
+CONFIG_ESP_SYSTEM_PANIC_REBOOT_DELAY_SECONDS=1
+
+# --- Brownout detector -----------------------------------------------------
+# Level 5 = ~2.76 V. The board runs from a 3.3 V LDO off USB, and SPI flash is
+# only rated down to ~2.7 V, so we reset just before flash/RF go unreliable.
+# Higher levels (4 = 2.92 V, 3 = 3.10 V) risk false resets from the normal dip
+# during Wi-Fi TX bursts on a weak USB cable; the IDF default (7 = 2.51 V) is
+# below the flash's rated minimum. Revisit after power tests on real boards.
+CONFIG_ESP_BROWNOUT_DET=y
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_5=y
+
+# --- Core dump -------------------------------------------------------------
+# Save crash state to the "coredump" partition so a crash in the field can be
+# read later with `idf.py coredump-info` (see docs/dev-setup.md).
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+# ELF is what coredump-info/-debug expect. verify on v6: the BIN format (and so
+# this choice) may be gone in v6.0.
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+# CRC32 is enough to detect a torn or partial dump; SHA256 buys nothing here.
+# verify on v6: this choice may be removed or renamed.
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+
+# --- Bootloader ------------------------------------------------------------
+# Skip the full image check when waking from deep sleep: overheat protection
+# sleeps for 60 s and must resume fast. A cold boot still validates.
+CONFIG_BOOTLOADER_SKIP_VALIDATE_IN_DEEP_SLEEP=y
+# App rollback is intentionally NOT enabled: single factory app, no OTA yet.
+
+# --- Compiler --------------------------------------------------------------
+# -Og: debug-friendly code and readable backtraces. For release, switch to
+# CONFIG_COMPILER_OPTIMIZATION_SIZE=y (or _PERF=y).
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+# Keep assert() live: a broken invariant should panic -> reboot -> coredump.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y
+
+# --- Wi-Fi -----------------------------------------------------------------
+# The country code is not a Kconfig option in IDF v5.3; #14 sets it at runtime
+# with esp_wifi_set_country_code(), along with the fixed AP channel.
+
+# --- Logging ---------------------------------------------------------------
+# INFO by default. To debug, raise it in menuconfig (Component config -> Log
+# output -> Default log verbosity) or per tag at runtime with
+# esp_log_level_set("tag", ESP_LOG_DEBUG); runtime raising only goes up to
+# CONFIG_LOG_MAXIMUM_LEVEL. verify on v6: the log component was reworked.
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- FreeRTOS --------------------------------------------------------------
+# Canary bytes at the end of each task stack, checked on every context switch:
+# catches overflows that the pointer-only check (method 1) misses.
+CONFIG_FREERTOS_CHECK_STACKOVERFLOW_CANARY=y
+# CONFIG_FREERTOS_USE_TRACE_FACILITY stays off: per-task stack headroom
+# (uxTaskGetStackHighWaterMark) works without it. Turn it on only if we want
+# uxTaskGetSystemState()/vTaskList() for a whole-system task table.
