@@ -16,6 +16,12 @@ if(NOT PROBE_BOARD MATCHES "^(xiao|generic)$")
 endif()
 # Must be set before project(): IDF reads it while generating sdkconfig.
 set(SDKCONFIG_DEFAULTS "sdkconfig.defaults;sdkconfig.defaults.${PROBE_BOARD}")
+# Optional extra defaults layered last, e.g. a scratch file with CONFIG_PROBE_BRINGUP_DIAG=y:
+# `idf.py -DPROBE_EXTRA_DEFAULTS=/tmp/diag.defaults build` (fresh sdkconfig only, as above).
+set(PROBE_EXTRA_DEFAULTS "" CACHE STRING "Extra sdkconfig defaults file(s), ;-separated")
+if(PROBE_EXTRA_DEFAULTS)
+    list(APPEND SDKCONFIG_DEFAULTS ${PROBE_EXTRA_DEFAULTS})
+endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(coffee_probe)

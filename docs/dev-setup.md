@@ -81,11 +81,11 @@ A temporary firmware mode that tells you what hardware is on the bench. When it'
 **Turn it on** (simplest): `idf.py menuconfig` → **CoffeeProbe bring-up** → tick *Run bring-up diagnostics instead of the app* → save (`S`) and quit (`Q`). Then build, flash and monitor as usual.
 
 Alternative without the menu: put `CONFIG_PROBE_BRINGUP_DIAG=y` in a file such as `/tmp/diag.defaults`, delete `sdkconfig` (existing values win over defaults), and run
-`idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;/tmp/diag.defaults" build`.
+`idf.py -DPROBE_EXTRA_DEFAULTS=/tmp/diag.defaults build` (the top-level `CMakeLists.txt` layers it after the board defaults).
 
 **What to expect** in the monitor (tag `bringup`):
 
-1. A banner with the pin map (XIAO plan: I2C SDA=6 SCL=7; thermocouple SCK=8 MISO=9 CS=10).
+1. A banner with the board name and pin map (XIAO: I2C SDA=6 SCL=7; thermocouple SCK=8 MISO=9 CS=10).
 2. `I2C scan`: one line per responding address. An OLED is normally `0x3C` or `0x3D` (marked "likely OLED"). Nothing found = check SDA/SCL wiring and power.
 3. If an OLED answered, a test pattern: 1-px border, an X corner to corner, and a small filled block top-left.
    A clean border means **SSD1306**. A border shifted ~2 px, or a garbage column at the right edge, means **SH1106**.
