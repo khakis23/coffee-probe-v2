@@ -2,5 +2,5 @@
 idf_component_register(
     SRCS "app_main.cpp"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES board esp_timer spi_flash
+    PRIV_REQUIRES board bringup esp_timer spi_flash
 )

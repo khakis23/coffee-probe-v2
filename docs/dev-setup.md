@@ -74,6 +74,27 @@ a new `sdkconfig.defaults.<name>`, and the name in the `PROBE_BOARD` check in th
 - **Monitor**: use the built-in Terminal: `idf.py -p $ESPPORT monitor`. (CLion's Serial Monitor plugin also works, at 115200 baud, but it doesn't decode panic backtraces.)
 - **Debugging (optional, later)**: C3 boards with native USB expose JTAG directly. Run `idf.py openocd` in a terminal, then add an *Embedded GDB Server* config pointing at `riscv32-esp-elf-gdb`, target `localhost:3333`.
 
+## Bring-up diagnostics (#2/#3)
+
+A temporary firmware mode that tells you what hardware is on the bench. When it's on, `app_main` runs the diagnostics and never starts the normal app.
+
+**Turn it on** (simplest): `idf.py menuconfig` → **CoffeeProbe bring-up** → tick *Run bring-up diagnostics instead of the app* → save (`S`) and quit (`Q`). Then build, flash and monitor as usual.
+
+Alternative without the menu: put `CONFIG_PROBE_BRINGUP_DIAG=y` in a file such as `/tmp/diag.defaults`, delete `sdkconfig` (existing values win over defaults), and run
+`idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;/tmp/diag.defaults" build`.
+
+**What to expect** in the monitor (tag `bringup`):
+
+1. A banner with the pin map (XIAO plan: I2C SDA=6 SCL=7; thermocouple SCK=8 MISO=9 CS=10).
+2. `I2C scan`: one line per responding address. An OLED is normally `0x3C` or `0x3D` (marked "likely OLED"). Nothing found = check SDA/SCL wiring and power.
+3. If an OLED answered, a test pattern: 1-px border, an X corner to corner, and a small filled block top-left.
+   A clean border means **SSD1306**. A border shifted ~2 px, or a garbage column at the right edge, means **SH1106**.
+4. Every second: `TC raw 0x........`, then the frame decoded as MAX31855 and as MAX6675 (°C and °F), and a one-line guess.
+   A MAX31855's internal (cold-junction) temperature reads close to room temperature. A MAX6675 usually leaves the low 16 bits `0000`. All `0`s or all `F`s = wiring or power problem.
+   Touch the thermocouple tip and watch the TC reading rise.
+
+**Turn it off again** before normal work: untick it in menuconfig (or delete `sdkconfig` and rebuild without the extra defaults file). Never commit it into `sdkconfig.defaults`.
+
 ## Board notes
 
 - Each board profile builds its own image (pins and console differ). Pin assignments live only in `components/board/include/board/board.hpp`. Never hardcode a GPIO elsewhere.
