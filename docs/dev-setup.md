@@ -74,6 +74,31 @@ a new `sdkconfig.defaults.<name>`, and the name in the `PROBE_BOARD` check in th
 - **Monitor**: use the built-in Terminal: `idf.py -p $ESPPORT monitor`. (CLion's Serial Monitor plugin also works, at 115200 baud, but it doesn't decode panic backtraces.)
 - **Debugging (optional, later)**: C3 boards with native USB expose JTAG directly. Run `idf.py openocd` in a terminal, then add an *Embedded GDB Server* config pointing at `riscv32-esp-elf-gdb`, target `localhost:3333`.
 
+## Host unit tests (#7)
+
+`components/core` is plain C++ with no IDF headers, so it is also compiled and tested on the Mac
+with the normal host compiler. The project lives in `test/host` (plain CMake, not ESP-IDF; doctest
+is fetched automatically on the first configure). Tests are `test/host/test_*.cpp`.
+
+```sh
+cmake -S test/host -B build-host
+cmake --build build-host
+ctest --test-dir build-host --output-on-failure
+```
+
+If any core file includes an `esp_*`/`freertos/*` header, this build fails. That is on purpose.
+
+**CLion**: the firmware project uses the ESP-IDF toolchain, the tests use the host one, so keep them apart.
+**File → Open** `test/host` as a separate project (a second CLion window) with the default (system) toolchain.
+Alternatively, in the firmware project, right-click `test/host/CMakeLists.txt` → **Load CMake Project**
+with a profile whose toolchain is the system one (not `ESP-IDF`).
+CLion recognises doctest: click the gutter ▶ next to a `TEST_CASE` to run or debug just that test,
+or run the `core_tests` target for all of them.
+
+**CI**: `.github/workflows/ci.yml` runs these host tests plus firmware builds (xiao and generic,
+IDF v5.3.1 and v6.0.3, and xiao with bring-up diagnostics on) on every PR and push to `main`.
+A failing test or build turns the PR check red. The v6.0.3 jobs are allowed to fail until v6 support lands (#1/#2).
+
 ## Bring-up diagnostics (#2/#3)
 
 A temporary firmware mode that tells you what hardware is on the bench. When it's on, `app_main` runs the diagnostics and never starts the normal app.
