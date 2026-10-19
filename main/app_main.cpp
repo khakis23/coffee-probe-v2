@@ -5,6 +5,7 @@
 
 #include <cinttypes>
 
+#include "board/board.hpp"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_log.h"
@@ -24,7 +25,7 @@ void log_chip_info() {
     uint32_t flash_bytes = 0;
     esp_flash_get_size(nullptr, &flash_bytes);
 
-    ESP_LOGI(kTag, "ESP-IDF %s", esp_get_idf_version());
+    ESP_LOGI(kTag, "ESP-IDF %s, board: %s", esp_get_idf_version(), board::kBoard.name);
     ESP_LOGI(kTag, "Chip model %d rev v%d.%d, %d core(s), %" PRIu32 " MB flash", chip.model,
              chip.revision / 100, chip.revision % 100, chip.cores, flash_bytes / (1024 * 1024));
     ESP_LOGI(kTag, "Reset reason: %d", static_cast<int>(esp_reset_reason()));
