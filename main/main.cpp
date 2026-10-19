@@ -12,6 +12,11 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sdkconfig.h"
+
+#if CONFIG_PROBE_BRINGUP_DIAG
+#include "bringup/bringup.hpp"
+#endif
 
 namespace {
 
@@ -33,6 +38,10 @@ void log_chip_info() {
 }  // namespace
 
 extern "C" void app_main() {
+#if CONFIG_PROBE_BRINGUP_DIAG
+    bringup::run();  // hardware diagnostics (#2/#3); never returns
+#endif
+
     log_chip_info();
 
     while (true) {
