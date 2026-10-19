@@ -1,0 +1,28 @@
+# Shows up in `idf.py menuconfig` under "CoffeeProbe board".
+#
+# Each `config FOO` becomes `CONFIG_FOO` in the generated sdkconfig and, for C/C++, a
+# `#define CONFIG_FOO 1` in build/config/sdkconfig.h (only the selected choice gets defined).
+# board.hpp tests those macros with #if to pick the pin table.
+#
+# Normally you don't pick this by hand: the top-level CMakeLists.txt loads
+# sdkconfig.defaults.<board>, which sets the matching symbol (see docs/dev-setup.md).
+
+menu "CoffeeProbe board"
+
+    choice PROBE_BOARD
+        prompt "Board profile"
+        default PROBE_BOARD_XIAO_C3
+        help
+            Selects the pin map and Wi-Fi TX power in board/board.hpp.
+            Must agree with the PROBE_BOARD CMake option (xiao / generic),
+            which also picks the console settings for the board.
+
+        config PROBE_BOARD_XIAO_C3
+            bool "Seeed Studio XIAO ESP32C3"
+
+        config PROBE_BOARD_GENERIC_C3
+            bool "Generic ESP32-C3 DevKit (UART console kept)"
+
+    endchoice
+
+endmenu

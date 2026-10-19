@@ -1,0 +1,11 @@
+# Generic ESP32-C3 DevKit. Layered on top of sdkconfig.defaults when PROBE_BOARD=generic
+# (see the top-level CMakeLists.txt). Only applies to a freshly generated sdkconfig.
+
+# Firmware pin map: board/board.hpp uses this to pick the generic table.
+CONFIG_PROBE_BOARD_GENERIC_C3=y
+
+# Console on UART0 (dev boards with a USB-UART bridge) and on the native
+# USB-Serial-JTAG port (SuperMini etc.) so logs work on any C3 DevKit.
+# The generic pin map leaves GPIO20/21 free for this.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
