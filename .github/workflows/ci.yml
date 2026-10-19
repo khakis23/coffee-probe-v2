@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  host-tests:
+    name: Host tests (core + doctest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S test/host -B build-host
+      - name: Build
+        run: cmake --build build-host
+      - name: Test
+        run: ctest --test-dir build-host --output-on-failure
+
+  firmware:
+    name: Firmware (${{ matrix.board }}, IDF ${{ matrix.idf }}${{ matrix.diag && ', diag' || '' }})
+    runs-on: ubuntu-latest
+    container: espressif/idf:${{ matrix.idf }}
+    # v6.0.x builds are informational for now: v6 support is pending #1/#2, so a red v6 job
+    # must not fail the workflow. Remove this once the firmware builds cleanly on v6.
+    continue-on-error: ${{ startsWith(matrix.idf, 'v6') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [xiao, generic]
+        idf: [v5.3.1, v6.0.3]
+        # diag must be a real matrix axis: otherwise the include below would be merged into the
+        # existing xiao/v5.3.1 job instead of adding a separate one.
+        diag: [false]
+        include:
+          # Bring-up diagnostics on, so the CONFIG_PROBE_BRINGUP_DIAG code paths keep compiling.
+          - { board: xiao, idf: v5.3.1, diag: true }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        shell: bash
+        run: |
+          # The checkout is owned by another uid than the container user; IDF runs
+          # `git describe` for the app version and git refuses "dubious ownership" without this.
+          git config --global --add safe.directory '*'
+          . "$IDF_PATH/export.sh"
+          if [ "${{ matrix.diag }}" = "true" ]; then
+            printf 'CONFIG_PROBE_BRINGUP_DIAG=y\n' > /tmp/diag.defaults
+            idf.py -DPROBE_BOARD=${{ matrix.board }} -DPROBE_EXTRA_DEFAULTS=/tmp/diag.defaults build
+          else
+            idf.py -DPROBE_BOARD=${{ matrix.board }} build
+          fi
