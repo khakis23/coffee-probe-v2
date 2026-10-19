@@ -99,3 +99,46 @@ Alternative without the menu: put `CONFIG_PROBE_BRINGUP_DIAG=y` in a file such a
 
 - Each board profile builds its own image (pins and console differ). Pin assignments live only in `components/board/include/board/board.hpp`. Never hardcode a GPIO elsewhere.
 - Native-USB boards (XIAO, SuperMini): if a flash attempt can't connect, hold **BOOT**, tap **RESET**, release **BOOT**, and retry.
+
+## Crashes and core dumps
+
+The firmware never halts on a crash: it prints the panic, saves a **core dump** to the `coredump` flash partition, and reboots (see the reliability section of `sdkconfig.defaults` and `partitions.csv`).
+
+### What a crash looks like in the monitor
+
+- **Panic** (null pointer, `abort()`, failed `assert`): a `Guru Meditation Error: Core 0 panic'ed (...)` banner, a register dump and a `Backtrace:` line. `idf.py monitor` decodes the backtrace into file:line for you.
+- **Task watchdog** (a task stopped yielding for 5 s):
+  ```
+  E (12345) task_wdt: Task watchdog got triggered. The following tasks/users did not reset the watchdog in time:
+  E (12345) task_wdt:  - IDLE (CPU 0)
+  E (12345) task_wdt: Tasks currently running:
+  E (12345) task_wdt: CPU 0: main
+  E (12345) task_wdt: Aborting.
+  ```
+  followed by the usual panic output. `IDLE` in the list means some task hogged the CPU; the "currently running" task is usually the culprit.
+- **Interrupt watchdog**: `Guru Meditation Error: Core 0 panic'ed (Interrupt wdt timeout on CPU0)`.
+- **Stack overflow**: `***ERROR*** A stack overflow in task <name> has been detected.` Give that task a bigger stack.
+- **Brownout**: `Brownout detector was triggered`, then a reset. Usually a bad USB cable or a weak supply.
+
+After any of these you'll see `Core dump ... saved` (or similar), a 1 s pause, then the ROM boot banner again (`rst:0xc (RTC_SW_CPU_RST)` after a panic reboot).
+
+### Reading the core dump
+
+With the board plugged in (no need to reproduce the crash):
+
+```bash
+idf.py -p $ESPPORT coredump-info    # summary: crashed task, registers, backtrace of every task
+idf.py -p $ESPPORT coredump-debug   # same dump, opened in GDB (bt, info threads, p some_var)
+```
+
+Both need the **same `build/` ELF** that was running when it crashed. If you've rebuilt since, check out that commit and rebuild first, or the backtrace will point at the wrong lines.
+
+### Erasing the core dump
+
+The dump stays in flash until something overwrites it (the next crash does). To start clean:
+
+```bash
+parttool.py -p $ESPPORT erase_partition --partition-name=coredump
+```
+
+`idf.py erase-flash` also clears it, but wipes settings (NVS) too.
