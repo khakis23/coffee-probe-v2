@@ -105,7 +105,9 @@ Tyler and the next agent act on what you write.
 - **The repo is in iCloud Drive** (`~/Documents`). iCloud creates conflict copies named like
   `build 2.ninja` in busy folders. Scripts build in `~/Library/Caches/coffee-probe/`. If a build in
   `build/` or `cmake-build-*/` acts strangely, delete the folder. Never commit a name ending in
-  space + number (guards refuse it).
+  space + number (guards refuse it). Rebases and branch switches are when copies appear: check
+  `git status` afterwards. The pre-commit hook runs the guards; enable it in a fresh clone with
+  `git config core.hooksPath .agents/git-hooks`.
 - **`sdkconfig.defaults` only applies when `sdkconfig` is generated.** Changing a default does nothing
   to an existing `sdkconfig`; delete it (the scripts do this automatically for their own builds).
 - **Two IDF versions are installed** (v5.3.1, v6.0.3). Never source both `export.sh` files in one shell;

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs scripts/guards.sh before every commit, so rule violations and iCloud conflict copies
+# ("name 2.cpp") never get committed. Enabled per clone with:
+#   git config core.hooksPath .agents/git-hooks
+# Guards check the working tree and tracked files; staged-but-uncommitted state is close enough.
+exec "$(git rev-parse --show-toplevel)/scripts/guards.sh"
