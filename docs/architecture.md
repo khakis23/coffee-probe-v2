@@ -53,9 +53,11 @@ components/
   net/                   SoftAP setup, Modbus TCP socket server
   storage/               NVS settings (versioned, CRC, validated)
   health/                thermal monitor, task liveness, reset/boot diagnostics
-test/host/               doctest + CMake; runs natively in CLion and in CI
+test/host/               doctest + CMake; runs natively on the Mac and in CI
 artisan/                 Artisan setup guide (screenshots) + optional .aset
-.github/workflows/       firmware build (espressif/idf container) + host tests
+.github/workflows/       guards + host tests + firmware builds (mirrored by scripts/ci-local.sh)
+scripts/                 ci-local.sh, guards.sh, flash.sh, serial_capture.py
+.agents/                 agent rules, skills and hooks (entry point: AGENTS.md)
 ```
 
 ### Register map

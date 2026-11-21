@@ -2,22 +2,26 @@
 # Local CI: the same checks as .github/workflows/ci.yml, run on this Mac.
 #
 #   scripts/ci-local.sh            # everything
-#   scripts/ci-local.sh --clean    # wipe build-ci/ first (slow, but exactly like a fresh CI run)
+#   scripts/ci-local.sh --clean    # wipe the CI build folder first (slow, but like a fresh CI run)
 #   scripts/ci-local.sh host xiao  # only jobs whose name contains "host" or "xiao"
 #
 # Jobs:
+#   guards                scripts/guards.sh: mechanical checks of the hard rules (AGENTS.md)
 #   host                  host unit tests (test/host, doctest) with the Mac's own compiler
-#   <board>-<idf>[-diag]  firmware build in its own build-ci/<job>/ folder with its own sdkconfig,
+#   <board>-<idf>[-diag]  firmware build in its own <out>/<job>/ folder with its own sdkconfig,
 #                         so the normal build/ and sdkconfig are never touched
 #
+# Output goes to ~/Library/Caches/coffee-probe/ci (override with CI_OUT=...), NOT the repo: the repo
+# is in iCloud Drive, which makes "file 2" conflict copies inside busy build folders.
+#
 # IDF v6 jobs are "allowed to fail" (reported, but don't fail the run), matching continue-on-error
-# in the GitHub workflow, until v6 support lands. Logs: build-ci/logs/<job>.log.
+# in the GitHub workflow, until v6 support lands. Logs: <out>/logs/<job>.log.
 #
 # Exit code: 0 if every required job passed, 1 otherwise.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/build-ci"
+OUT="${CI_OUT:-$HOME/Library/Caches/coffee-probe/ci}"
 LOGS="$OUT/logs"
 
 # IDF version -> install location on this machine (see docs/dev-setup.md).
@@ -43,7 +47,7 @@ filters=()
 for arg in "$@"; do
     case "$arg" in
         --clean) clean=true ;;
-        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) filters+=("$arg") ;;
     esac
 done
@@ -113,10 +117,11 @@ firmware_build() {   # firmware_build <board> <idf> <diag> <job dir>
         ' "$ROOT" "$dir" "$board" "$extra"
 }
 
-echo "Local CI in $ROOT"
+echo "Local CI in $ROOT (output: $OUT)"
 echo "Commit: $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD -- || echo ' + uncommitted changes')"
 echo
 
+selected guards && run_job guards false "$ROOT/scripts/guards.sh"
 selected host && run_job host false host_tests
 
 for job in "${FIRMWARE_JOBS[@]}"; do
@@ -131,7 +136,7 @@ echo
 if [ ${#results[@]} -eq 0 ]; then
     echo "No jobs matched: ${filters[*]}"; exit 1
 elif $required_failed; then
-    echo "LOCAL CI FAILED (logs in build-ci/logs/)"; exit 1
+    echo "LOCAL CI FAILED (logs in $LOGS/)"; exit 1
 else
     echo "LOCAL CI PASSED"
 fi
