@@ -5,7 +5,7 @@ Wireless K-type thermocouple probe for coffee roasting. An ESP32-C3 reads a MAX3
 - Requirements: [`ideas.md`](ideas.md)
 - Architecture & plan: [`docs/architecture.md`](docs/architecture.md)
 - Dev environment (CLI + CLion): [`docs/dev-setup.md`](docs/dev-setup.md)
-- How we work (HUMAN/CLAUDE tickets, branches, PRs): [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- How we work (Claude develops, Tyler tests on hardware; tickets, PRs, local CI): [`CONTRIBUTING.md`](CONTRIBUTING.md)
 
 ```bash
 . ~/esp/esp-idf/export.sh

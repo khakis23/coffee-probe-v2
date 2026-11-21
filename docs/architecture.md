@@ -9,7 +9,7 @@ v1 (repo `khakis23/CoffeeProbe`, left as is) was an Arduino BLE sketch plus a cu
 
 Scope: one unit, one channel (Bean Temp). The laptop may lose Wi-Fi internet while roasting (Ethernet still works).
 
-Work is tracked as GitHub issues labelled `HUMAN` or `CLAUDE`; see [CONTRIBUTING.md](../CONTRIBUTING.md).
+Claude is the sole developer; Tyler is the customer and does the hands-on hardware tests. Work is tracked as GitHub issues labelled `CLAUDE` or `TYLER`; see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Key decisions
 
@@ -119,7 +119,7 @@ A "Generic C3 DevKit" profile keeps the UART console. The board is chosen by a K
 
 | Milestone | Outcome |
 |---|---|
-| M0 Toolchain & bring-up | IDF v6 toolchain, CLion build/flash loop, hardware identified |
+| M0 Toolchain & bring-up | IDF v6 toolchain, build/flash loop, hardware identified |
 | M1 Foundation | Component layout, reliability config, StateStore, host tests, CI |
 | M2 Thermocouple | Accurate, fault-aware BT readings |
 | M3 Wi-Fi + Modbus + Artisan | **Artisan plots live BT**. Critical path, proven before any UI work |
@@ -132,7 +132,7 @@ Backlog: XIAO battery %, Artisan WebSocket mode with CHARGE/DROP buttons, browse
 
 ## Verification
 
-- **Every PR**: CI builds the firmware for each board profile and runs the host tests.
+- **Every PR**: local CI (`scripts/ci-local.sh`) and GitHub Actions build the firmware for each board profile and run the host tests.
 - **Each milestone**: the on-device acceptance criteria in its issues.
 - **Fault injection (#26)**: probe unplug/replug, TC short to ground, probe power cycle mid-recording, laptop sleep/wake, a second Wi-Fi client, laptop Wi-Fi toggle, heat gun to warn/critical, corrupt NVS, factory reset, power loss mid-save.
 - **Soak (#27)**: 4 h of continuous Artisan recording with zero resets, stable minimum free heap, and no gaps in the curve.
