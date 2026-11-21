@@ -7,44 +7,46 @@ time to see where things stand.*
 
 ## In plain English
 
-The foundations are built but not merged yet: project layout, board pin profiles, crash-safety
-settings, a hardware-diagnostics mode, automatic checks, and the rules every AI agent follows.
-Nothing measures coffee yet. Next comes the core temperature logic, then reading the real
-thermocouple (milestone M2).
+The foundations are built but not merged yet: the project's folder layout, pin settings for each
+supported board, crash-safety settings, a hardware-check mode for the first wiring test, automatic
+checks that run on every change, and the rules every AI agent follows. Nothing measures coffee yet.
+Next: the temperature math, then reading the real thermocouple (milestone M2).
 
 ## Milestone
 
 **M0 Toolchain & bring-up** and **M1 Foundation**, in progress.
 
-## Open PRs (merge in this order)
+## Changes waiting to be merged (in this order)
 
-CI only exists from #36 on, so #33–#35 have no checks of their own. #36 contains all of them, and
-its CI (and a full local CI run) is green.
+| PR | Ticket | What it does |
+|---|---|---|
+| #33 | #5 | Crash-safety settings: restart on a freeze, keep a record of crashes |
+| #34 | #2 | Hardware-check mode: reports which screen and temperature chip are wired up |
+| #35 | #4 | Folder layout, and pin settings per board (contains #33 and #34) |
+| #36 | #7 | Automatic checks: logic tests on the Mac and on GitHub, plus local CI |
+| #37 | (none) | The new way of working, and the rules and tools for AI agents |
 
-| PR | Issue | What | Base |
-|---|---|---|---|
-| #33 | #5 | Reliability sdkconfig + partition table with coredump | `main` |
-| #34 | #2 | Bring-up diagnostics firmware | `main` |
-| #35 | #4 | Component layout, board profiles, `board.hpp` (contains #33, #34) | `main` |
-| #36 | #7 | Host tests, GitHub CI, `scripts/ci-local.sh` | #35's branch |
-| #37 | (none) | Claude as sole developer; `AGENTS.md`, `.agents/` rules and skills, guards | #36's branch |
+The automatic checks were added in #36, so #33–#35 have none of their own. #36 contains all their
+changes and passes every check, which covers them. Each PR builds on the one above it.
 
 ## Next for Claude
 
-1. Merge the stack above (needs Tyler's OK on self-merging).
-2. #6 StateStore, task skeleton, firmware version from git.
-3. #8 temperature helpers, #9 decode interface, #10/#11 MAX31855/MAX6675 decoders (move the
-   decoders out of `components/bringup` into `core` with datasheet test vectors).
-4. #2 follow-up: v6.0.3 builds already pass locally; decide the IDF version and make v6 CI blocking.
+1. Get the changes above merged (see "Waiting on Tyler").
+2. #6: the shared store for the latest readings, and the firmware's background tasks.
+3. #8–#11: the temperature math and the code that decodes the two possible thermocouple chips, each
+   tested against the chip makers' datasheets.
+4. #2 follow-up: the newer ESP-IDF version (v6) already builds cleanly; confirm it as the version we
+   use and make its checks required.
 
 ## Waiting on Tyler
 
-- **Decision**: OK for Claude to merge its own PRs once CI is green (PR #37 describes it)?
+- **Decision**: may Claude merge its own PRs once every check passes? Until then, merging is yours.
 - **#3 (TYLER)**: wire the breadboard and identify the parts. Claude will rewrite it as plain steps
-  once #34 is merged. Leaving the board plugged into the Mac lets Claude do the flashing.
+  once PR #34 is merged. Leaving the board plugged into the Mac lets Claude load the firmware itself.
 
 ## Known issues / notes
 
-- Nothing has run on real hardware yet. The parts (OLED controller, MAX31855 vs MAX6675, probe
-  grounding) are unconfirmed until #3.
-- `scripts/flash.sh` and `scripts/serial_capture.py` are tested without a board only.
+- Nothing has run on real hardware yet. Which screen, which temperature chip, and whether the probe
+  tip is grounded stay unconfirmed until #3.
+- The scripts that load firmware onto the board and read its output have only been tested without a
+  board attached.

@@ -5,9 +5,15 @@ description: Work with a real CoffeeProbe board plugged into the Mac - detect it
 
 # Device runbook (ESP32-C3: XIAO or generic DevKit)
 
-Scripts build in `~/Library/Caches/coffee-probe/flash/<board>-<idf>[-diag]/`, never in the repo.
-The IDF Python (for `serial_capture.py`) is `~/.espressif/python_env/idf5.3_py3.14_env/bin/python`;
-below it is written as `$PY`.
+`scripts/flash.sh` builds under `~/Library/Caches/coffee-probe/flash/` (one folder per checkout and
+board/IDF/diag combination), never in the repo, and prints the exact **build folder** at the end.
+Use that folder wherever this runbook says `<build>`.
+
+Set this once per shell (the IDF Python has pyserial):
+
+```bash
+PY=~/.espressif/python_env/idf5.3_py3.14_env/bin/python
+```
 
 ## Is a board there?
 
@@ -41,7 +47,8 @@ $PY scripts/serial_capture.py --seconds 60 --out .scratch/serial.txt
 $PY scripts/serial_capture.py --reset --until "Guru Meditation|alive" --seconds 20
 ```
 
-Lines are prefixed with seconds since capture start. Exit 1 with `--until` = pattern never seen.
+Lines are prefixed with seconds since capture start. Exit 1 = `--until` pattern never seen;
+exit 2 = the board disconnected and didn't come back.
 
 What to look for: `rst:` reason on the ROM banner, `coffee_probe` / `bringup` tags, `E (` error lines,
 `Guru Meditation`, `task_wdt`, `Brownout`. `docs/dev-setup.md` → *Crashes and core dumps* explains
@@ -49,21 +56,21 @@ each crash signature.
 
 ## Decode a panic backtrace
 
-Use the ELF from the same build folder that was flashed:
+Use the ELF from the same build folder that was flashed (and the matching IDF's `export.sh`):
 
 ```bash
 . ~/esp/esp-idf/export.sh >/dev/null
-riscv32-esp-elf-addr2line -pfiaC -e ~/Library/Caches/coffee-probe/flash/xiao-v5.3.1/coffee_probe.elf <PC addresses from the Backtrace line>
+riscv32-esp-elf-addr2line -pfiaC -e <build>/coffee_probe.elf <PC addresses from the Backtrace line>
 ```
 
 ## Core dump (crash already happened)
 
 ```bash
 . ~/esp/esp-idf/export.sh >/dev/null
-idf.py -B ~/Library/Caches/coffee-probe/flash/xiao-v5.3.1 -p <port> coredump-info
+idf.py -B <build> -DSDKCONFIG=<build>/sdkconfig -p <port> coredump-info
 ```
 
-Needs the ELF of the firmware that crashed. Erase afterwards with
+Needs the ELF of the firmware that crashed. Erase afterwards (same shell, after `export.sh`):
 `parttool.py -p <port> erase_partition --partition-name=coredump`.
 
 ## Bring-up diagnostics output

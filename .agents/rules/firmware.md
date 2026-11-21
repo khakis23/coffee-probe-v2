@@ -34,9 +34,11 @@ Rules for all C++ in `components/` and `main/`. Rules marked **(guard)** are che
 
 - No heap allocation in our code **(guard)**: no `new`, `malloc`, `std::vector`, `std::string`,
   `std::function`, `std::map`, `make_unique`/`make_shared`. Use fixed-size buffers sized by named
-  constants. IDF components allocating internally during init (Wi-Fi, lwIP) is fine.
-- Tasks are created with `xTaskCreateStatic` and statically allocated stacks **(guard)**. Queues,
-  mutexes and semaphores use the `...Static` variants too.
+  constants. Placement new into a static buffer is allowed. IDF components allocating internally
+  during init (Wi-Fi, lwIP) is fine. A rare allocation in our own init code needs a trailing
+  `// guard-ok: <reason>` comment on that line; reviewers check every one.
+- Tasks, queues, mutexes, semaphores, event groups, timers and stream buffers use the `...Static`
+  creation functions with statically allocated storage **(guard)**.
 - Stack sizes are named constants with a comment on how they were sized. Check
   `uxTaskGetStackHighWaterMark` on hardware and keep ≥ 25 % headroom.
 - Shared state goes through `StateStore` (mutex, copy-out snapshot). No other globals shared between

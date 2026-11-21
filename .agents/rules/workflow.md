@@ -10,15 +10,17 @@ One issue at a time, roughly in milestone order (M0 → M7), one PR per issue.
    Tyler named one. Comment on the issue that work has started.
 2. `git fetch` and branch from up-to-date `main`: `git switch -c claude/<issue#>-<short-slug> origin/main`.
    If the issue depends on an unmerged PR, branch from that PR's branch instead (a stacked PR, see Merging).
+   Work with no issue (tooling, docs chores): `claude/chore-<slug>`, PR title without `(#N)`.
 3. For pure logic in `core`, write the host tests from the acceptance criteria first.
 4. Implement the smallest thing that meets the acceptance criteria and follows the rules files.
 5. Run `scripts/ci-local.sh guards host` while iterating, and the full `scripts/ci-local.sh` before
    every push.
 6. Small commits whose message says *why*. Non-obvious ESP-IDF or FreeRTOS choices are explained in
    the commit or PR so the history teaches the next reader.
-7. Push and open the PR (format below). Get a review when the table below requires one.
-8. When local CI and GitHub CI are green and review (if required) approves: squash-merge and delete
-   the branch. Update `docs/STATUS.md` in the PR or a follow-up commit.
+7. Push and open the PR (format below). Get the review(s) described under Roles and review.
+8. When local CI and GitHub CI are green and review approves: squash-merge and delete the branch.
+   **Until Tyler approves self-merging (D-001)**, leave the green PR for him instead and list it in
+   `docs/STATUS.md` under "Waiting on Tyler". Update `docs/STATUS.md` in the PR or a follow-up commit.
 9. Next issue.
 
 A milestone is finished when its `CLAUDE` issues are merged **and** its `TYLER` hardware tests have
@@ -46,28 +48,36 @@ Title: `<what changed> (#N)`. Body, in this order:
 
 ## Roles and review
 
-- **Lead (Claude)**: owns architecture, plans, issue refinement, UI/design and anything needing the
-  conversation with Tyler. Writes most code directly.
-- **Builder (Codex)**: may implement a well-specified issue from a written plan in its own git
-  worktree. The Lead reviews every line before it lands.
-- **Reviewers**: Codex reviews code the Lead wrote; the Lead reviews code Codex wrote. Gemini is a
-  second, independent reviewer for the areas marked below, and drafts human-facing docs.
+Work is routed by Tyler's global rules (`~/.claude/CLAUDE.md`), which also set models, tiers and
+usage limits. Call other models only through the installed `codex` / `gemini` skills. In this project:
 
-Which model, tier and how much usage to spend are machine-level settings (`~/.claude/CLAUDE.md`),
-not project rules. Call other models only through the installed `codex` / `gemini` skills.
+- **Lead (Claude)**: architecture, issue refinement, UI and display design, decisions, anything that
+  needs the conversation with Tyler, and the final check on everything that lands. Writes code itself
+  only for those areas or when a task is a few tool calls (briefing would cost more).
+- **Planner / reviewer (Codex, hard tier)**: the implementation plan for any non-trivial issue, hard
+  bugs, and the code review before merge.
+- **Builder (Codex, code tier)**: implements an issue from a written plan (from the Lead or the
+  planner) in its own git worktree. It never writes its own plan. The Lead reviews every line.
+- **Writer / helper (Gemini)**: PR text, docs and other prose, small coding tasks, scripts and tools,
+  mechanical edits, and the second independent review for the areas marked below. Never complex
+  reasoning. In headless mode it can't run commands and may be refused file reads: paste the content
+  into the prompt.
+- If Codex refuses on pacing (exit 3), the Lead does the work or gives it to Gemini if it suits, and
+  says so. Every PR says which tool did what.
 
-**A review by a model other than the author is required before merging** changes to:
+**Every PR that changes code, scripts or CI gets a review by a model other than its author** before
+merging: Codex (hard tier) reviews what the Lead or Gemini wrote; the Lead reviews what Codex wrote.
+Docs-only PRs may skip it. These areas also need Gemini as a second, independent reviewer:
 
-| Area | Why | Second reviewer (Gemini) too |
-|---|---|---|
-| `components/net` (SoftAP, Modbus server) | Artisan's only link; socket bugs hang the roast | yes |
-| `components/storage` (NVS settings) | Corrupt settings can brick the user experience | yes |
-| `components/health`, watchdog or task setup in `main/` | A wrong watchdog = reboot loops or silent hangs | yes |
-| Thermocouple fault handling, filtering, stale detection | Wrong temperature shown as real | yes |
-| `sdkconfig.defaults*`, `partitions.csv` | Reliability config | |
-| `scripts/guards.sh`, CI files, `AGENTS.md`, `.agents/rules/` | They define every other check | |
+| Area | Why |
+|---|---|
+| `components/net` (SoftAP, Modbus server) | Artisan's only link; socket bugs hang the roast |
+| `components/storage` (NVS settings) | Corrupt settings can brick the user experience |
+| `components/health`, watchdog or task setup in `main/` | A wrong watchdog = reboot loops or silent hangs |
+| Thermocouple fault handling, filtering, stale detection | Wrong temperature shown as real |
+| `sdkconfig.defaults*`, `partitions.csv`, `scripts/guards.sh` | Reliability config and the checks that guard it |
 
-Other changes may merge on green CI. Reviewers read the diff cold, look for violations of the hard
+Reviewers read the diff cold, look for violations of the hard
 rules and the reliability contract, give concrete failure scenarios, skip style comments, and end
 with APPROVE or REQUEST CHANGES. Review runs are read-only; the Lead runs CI itself on the reviewed
 commit.
@@ -88,7 +98,10 @@ commit.
 - Squash-merge, delete the branch. Never force-push a branch with an open PR.
 - **Stacked PRs**: when an issue needs an unmerged PR, branch from it and open the PR with
   `--base <parent-branch>`. Merge parents first. Before merging a parent with `--delete-branch`,
-  retarget its children to `main` (`gh pr edit <child> --base main`), or GitHub closes them.
+  retarget the PR stacked directly on it to `main` (`gh pr edit <child> --base main`), or GitHub
+  closes it.
+- A PR from before CI existed (no checks of its own) may merge only when a green PR stacked on top of
+  it contains all of its commits, and local CI passes on that PR's head.
 - Tyler can write **"hold"** on any PR. A held PR is not merged until he lifts it.
 - If `gh pr merge` is refused by permissions, don't look for another way: leave the PR green, list it
   in `docs/STATUS.md` under "Waiting on Tyler", and continue stacked on top of it.
