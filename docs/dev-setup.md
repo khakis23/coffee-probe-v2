@@ -99,6 +99,13 @@ or run the `core_tests` target for all of them.
 IDF v5.3.1 and v6.0.3, and xiao with bring-up diagnostics on) on every PR and push to `main`.
 A failing test or build turns the PR check red. The v6.0.3 jobs are allowed to fail until v6 support lands (#1/#2).
 
+**Local CI**: `scripts/ci-local.sh` runs the same jobs on the Mac before anything is pushed, using
+the native IDF installs (`~/esp/esp-idf` = v5.3.1, `~/esp/esp-idf-v6.0` = v6.0.3). Each firmware job
+builds in its own `build-ci/<job>/` folder with its own `sdkconfig`, so your normal `build/` and
+`sdkconfig` are untouched. Later runs are incremental; `--clean` starts from scratch. Pass job names
+to run a subset, e.g. `scripts/ci-local.sh host xiao-v5.3.1`. Logs go to `build-ci/logs/`.
+Keep its job list in sync with the workflow's matrix.
+
 ## Bring-up diagnostics (#2/#3)
 
 A temporary firmware mode that tells you what hardware is on the bench. When it's on, `app_main` runs the diagnostics and never starts the normal app.
