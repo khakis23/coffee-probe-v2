@@ -6,7 +6,7 @@
 |---|---|---|---|
 | Guards | Hard rules (pins, heap, core purity, reliability config, tracked files) | `scripts/guards.sh` | Local CI + GitHub |
 | Host tests | All logic in `components/core` | `test/host/test_*.cpp` (doctest) | Local CI + GitHub |
-| Firmware builds | xiao + generic × IDF v5.3.1 + v6.0.3, plus diagnostics build | `idf.py` via `ci-local.sh` | Local CI + GitHub |
+| Firmware builds | generic + xiao × IDF v5.3.1 + v6.0.3, plus diagnostics builds (generic, both IDFs) | `idf.py` via `ci-local.sh` | Local CI + GitHub |
 | Bench checks | Driver behaviour on a real board | `scripts/flash.sh` + `serial_capture.py` | Agent, when a board is plugged in |
 | Field tests | Artisan, roaster, faults, soak | `TYLER` issues (#3, #13, #17, #26, #27) | Tyler, via the `tyler-test` skill |
 

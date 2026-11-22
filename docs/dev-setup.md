@@ -12,7 +12,7 @@ Firmware is a standard ESP-IDF CMake project targeting the **ESP32-C3**.
 
 ```bash
 . ~/esp/esp-idf/export.sh        # once per shell
-idf.py build                     # target comes from sdkconfig.defaults (esp32c3), board defaults to xiao
+idf.py build                     # target comes from sdkconfig.defaults (esp32c3), board defaults to generic
 idf.py -p /dev/cu.usbmodem* flash monitor   # native USB boards (XIAO, SuperMini)
 idf.py -p /dev/cu.usbserial-* flash monitor # boards with a USB-UART chip (DevKitM-1)
 ```
@@ -25,12 +25,15 @@ If you change settings in `idf.py menuconfig`, copy the ones that matter into `s
 
 | `PROBE_BOARD` | Board | Console | Kconfig symbol |
 |---|---|---|---|
-| `xiao` (default) | Seeed Studio XIAO ESP32C3 | USB-Serial-JTAG only (frees GPIO20 for BACK) | `CONFIG_PROBE_BOARD_XIAO_C3` |
-| `generic` | Any ESP32-C3 DevKit (DevKitM-1, SuperMini, ...) | UART0, plus USB-Serial-JTAG as secondary | `CONFIG_PROBE_BOARD_GENERIC_C3` |
+| `generic` (default) | Any ESP32-C3 DevKit (DevKitM-1, SuperMini, ...) | UART0, plus USB-Serial-JTAG as secondary | `CONFIG_PROBE_BOARD_GENERIC_C3` |
+| `xiao` | Seeed Studio XIAO ESP32C3 | USB-Serial-JTAG only (frees GPIO20 for BACK) | `CONFIG_PROBE_BOARD_XIAO_C3` |
+
+On native-USB DevKits (SuperMini) the app's logs appear on USB, but the bootloader's first lines only go to
+UART0, so they're missing there. That's expected.
 
 How it works:
 
-1. The top-level `CMakeLists.txt` reads the CMake cache variable `PROBE_BOARD` (default `xiao`) and, **before** `project()`, sets
+1. The top-level `CMakeLists.txt` reads the CMake cache variable `PROBE_BOARD` (default `generic`) and, **before** `project()`, sets
    `SDKCONFIG_DEFAULTS` to `sdkconfig.defaults;sdkconfig.defaults.<board>`. The board file is applied on top of the shared one.
 2. `sdkconfig.defaults.<board>` sets the console options **and** the matching `CONFIG_PROBE_BOARD_*` choice from
    `components/board/Kconfig`, so the pin map and the console can't disagree.
@@ -39,11 +42,11 @@ How it works:
 
 **Switching boards: delete `sdkconfig` first.** Defaults files are only read when `sdkconfig` is generated; an existing
 `sdkconfig` wins. Deleting `build/` too avoids a full-rebuild surprise in CLion. If you forget, CMake stops with
-"PROBE_BOARD=... but sdkconfig is for another board".
+"PROBE_BOARD=... but sdkconfig is for another board or console".
 
 ```bash
 rm -rf sdkconfig build
-idf.py -DPROBE_BOARD=generic build    # or -DPROBE_BOARD=xiao
+idf.py -DPROBE_BOARD=xiao build    # or -DPROBE_BOARD=generic (the default)
 ```
 
 `idf.py` remembers the value in `build/CMakeCache.txt`, so later `idf.py build` / `flash` calls keep the same board until you switch again.
@@ -61,7 +64,7 @@ a new `sdkconfig.defaults.<name>`, and the name in the `PROBE_BOARD` check in th
 3. **Settings → Build, Execution, Deployment → CMake**: edit the `Debug` profile.
    - Toolchain: `ESP-IDF`
    - Generator: `Ninja`
-   - CMake options: `-DIDF_TARGET=esp32c3 -DPROBE_BOARD=xiao` (or `generic`; see [Board profiles](#board-profiles)).
+   - CMake options: `-DIDF_TARGET=esp32c3 -DPROBE_BOARD=generic` (or `xiao`; see [Board profiles](#board-profiles)).
      To switch boards, change this option, delete `sdkconfig` and `build/`, then **Tools → CMake → Reset Cache and Reload Project**.
    - Build directory: `build` (shared with `idf.py`, so the CLI and the IDE don't build everything twice)
 4. Reload the CMake project. Indexing should resolve `esp_log.h`, `freertos/...`, etc.
@@ -95,8 +98,8 @@ with a profile whose toolchain is the system one (not `ESP-IDF`).
 CLion recognises doctest: click the gutter ▶ next to a `TEST_CASE` to run or debug just that test,
 or run the `core_tests` target for all of them.
 
-**CI**: `.github/workflows/ci.yml` runs these host tests plus firmware builds (xiao and generic,
-IDF v5.3.1 and v6.0.3, and xiao with bring-up diagnostics on) on every PR and push to `main`.
+**CI**: `.github/workflows/ci.yml` runs these host tests plus firmware builds (generic and xiao,
+IDF v5.3.1 and v6.0.3, plus generic with bring-up diagnostics on, on both IDF versions) on every PR and push to `main`.
 A failing test or build turns the PR check red. The v6.0.3 jobs are allowed to fail until v6 support lands (#1/#2).
 
 **Local CI**: `scripts/ci-local.sh` runs the same jobs on the Mac before anything is pushed: the rule
@@ -105,7 +108,7 @@ checks in `scripts/guards.sh`, the host tests, and the firmware builds, using th
 `~/Library/Caches/coffee-probe/ci/`, outside the repo, because the repo is in iCloud Drive (see
 *iCloud* below). Each firmware job has its own folder and `sdkconfig`, so your normal `build/` and
 `sdkconfig` are untouched. Later runs are incremental; `--clean` starts from scratch. Pass job names
-to run a subset, e.g. `scripts/ci-local.sh host xiao-v5.3.1`. Keep its job list in sync with the
+to run a subset, e.g. `scripts/ci-local.sh host generic-v5.3.1`. Keep its job list in sync with the
 workflow's matrix.
 
 **iCloud**: this repo lives in `~/Documents`, which syncs to iCloud Drive. iCloud makes conflict copies
@@ -124,7 +127,8 @@ Alternative without the menu: put `CONFIG_PROBE_BRINGUP_DIAG=y` in a file such a
 
 **What to expect** in the monitor (tag `bringup`):
 
-1. A banner with the board name and pin map (XIAO: I2C SDA=6 SCL=7; thermocouple SCK=8 MISO=9 CS=10).
+1. A banner with the board name and pin map (generic DevKit: I2C SDA=0 SCL=1; thermocouple SCK=6 MISO=5 CS=10;
+   XIAO: SDA=6 SCL=7, SCK=8 MISO=21 CS=10).
 2. `I2C scan`: one line per responding address. An OLED is normally `0x3C` or `0x3D` (marked "likely OLED"). Nothing found = check SDA/SCL wiring and power.
 3. If an OLED answered, a test pattern: 1-px border, an X corner to corner, and a small filled block top-left.
    A clean border means **SSD1306**. A border shifted ~2 px, or a garbage column at the right edge, means **SH1106**.

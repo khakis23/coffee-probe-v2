@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build and flash the firmware to a plugged-in board, without an interactive terminal.
 #
-#   scripts/flash.sh                    # XIAO profile, normal app, auto-detect the port
-#   scripts/flash.sh --board generic    # DevKit profile
+#   scripts/flash.sh                    # DevKit profile, the default, auto-detect the port
+#   scripts/flash.sh --board xiao       # XIAO profile
 #   scripts/flash.sh --diag             # bring-up diagnostics firmware instead of the app
 #   scripts/flash.sh --port /dev/cu.usbmodem1101 --idf v6.0.3
 #   scripts/flash.sh --build-only       # build, print the folder, don't flash
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-board=xiao idf=v5.3.1 diag=false port="" build_only=false
+board=generic idf=v5.3.1 diag=false port="" build_only=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --board) board="$2"; shift 2 ;;

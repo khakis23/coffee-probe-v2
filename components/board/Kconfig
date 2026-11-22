@@ -11,7 +11,7 @@ menu "CoffeeProbe board"
 
     choice PROBE_BOARD
         prompt "Board profile"
-        default PROBE_BOARD_XIAO_C3
+        default PROBE_BOARD_GENERIC_C3
         help
             Selects the pin map and Wi-Fi TX power in board/board.hpp.
             Must agree with the PROBE_BOARD CMake option (xiao / generic),

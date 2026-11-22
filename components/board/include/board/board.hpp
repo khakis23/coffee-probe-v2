@@ -53,15 +53,18 @@ struct Board {
 // Seeed Studio XIAO ESP32C3. Pin plan: docs/architecture.md → "Hardware / pin plan".
 // C3 strapping pins are GPIO2, GPIO8 and GPIO9: the boot ROM samples them at reset to choose the
 // boot mode, so nothing external may pull them the wrong way during reset. After boot they are
-// ordinary GPIOs.
+// ordinary GPIOs. GPIO9 is left to the onboard BOOT button with nothing connected externally.
+// GPIO8 must not be pulled low at reset; the MAX's SCK input does not drive it.
+// GPIO21 (UART0 TX) is free because the console is USB-only. The boot ROM may drive it briefly
+// at reset while the MAX's SO is high-impedance: the 10 kΩ pull-up holds CS high.
 inline constexpr Board kBoard{
     .name = "Seeed XIAO ESP32C3",
     .pins =
         {
             .i2c_sda = GPIO_NUM_6,      // D4
             .i2c_scl = GPIO_NUM_7,      // D5
-            .tc_sck = GPIO_NUM_8,       // D8, strapping: fine as an output after boot
-            .tc_miso = GPIO_NUM_9,      // D9, strapping + BOOT button; MAX is hi-Z while CS high
+            .tc_sck = GPIO_NUM_8,       // D8, strapping
+            .tc_miso = GPIO_NUM_21,     // D6, UART0 TX
             .tc_cs = GPIO_NUM_10,       // D10, 10 kΩ pull-up keeps the MAX quiet during boot
             .btn_up = GPIO_NUM_3,       // D1
             .btn_down = GPIO_NUM_4,     // D2
@@ -107,8 +110,7 @@ inline constexpr Board kBoard{
 #error "No board profile selected: set PROBE_BOARD in menuconfig (see docs/dev-setup.md)"
 #endif
 
-// The XIAO uses GPIO20 (UART0 RX) as the BACK button, so a UART console would fight it. This
-// catches an sdkconfig that was generated for a different board (delete sdkconfig and rebuild).
+// The XIAO uses UART0 pins for BACK and TC MISO, so a UART console would fight those signals.
 #if CONFIG_PROBE_BOARD_XIAO_C3 && CONFIG_ESP_CONSOLE_UART
 #error "XIAO profile needs the console on USB-Serial-JTAG only; delete sdkconfig and rebuild"
 #endif

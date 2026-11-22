@@ -6,7 +6,9 @@ description: Hand a physical task or hardware test to Tyler (the client) - write
 # Handing a test to Tyler
 
 Tyler is the customer. He's comfortable with the roaster, Artisan and a breadboard, but he doesn't
-read code or use the terminal. Every request costs him time, so batch them and make them impossible
+read code or use the terminal. User-facing material (the quick-start card, the Artisan guide, screen
+messages) is also for his non-technical staff: test it against "could a new staff member follow this
+alone?". Every request costs him time, so batch them and make them impossible
 to misread.
 
 ## In chat (quick physical step)

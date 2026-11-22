@@ -7,7 +7,7 @@ v1 (repo `khakis23/CoffeeProbe`, left as is) was an Arduino BLE sketch plus a cu
 1. **Stock Artisan is the only software on the laptop.** Artisan has no generic BLE input, so BLE is out.
 2. **Super reliable for a non-technical user**, in a warm roasting room, with **no router**.
 
-Scope: one unit, one channel (Bean Temp). The laptop may lose Wi-Fi internet while roasting (Ethernet still works).
+Scope: a few units used by Tyler and his non-technical staff in his roastery; one channel (Bean Temp, no ET in v1). Firmware, docs and a wiring guide only: the enclosure is Tyler's. The laptop may lose Wi-Fi internet while roasting (Ethernet still works).
 
 Claude is the sole developer; Tyler is the customer and does the hands-on hardware tests. Work is tracked as GitHub issues labelled `CLAUDE` or `TYLER`; see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
@@ -102,20 +102,36 @@ Failure mode → how we handle it:
 
 ## Hardware / pin plan
 
-XIAO ESP32C3 (default board profile):
+**Generic ESP32-C3 DevKit (default profile)**: DevKitM-1, SuperMini and similar. Keeps the UART console
+(GPIO20/21) for boards with a USB-UART chip, plus USB-Serial-JTAG (GPIO18/19) for native-USB boards.
+
+| GPIO | Use | Note |
+|---|---|---|
+| 0 / 1 | I2C SDA / SCL | OLED. 32 kHz crystal pins, unused on DevKits |
+| 6 | TC SCK | |
+| 5 | TC MISO | |
+| 10 | TC CS | **10 kΩ pull-up** keeps the MAX quiet during boot |
+| 3 / 4 | UP / DOWN | GPIO 0–5 can wake from deep sleep |
+| 7 | OK | |
+| 9 | BACK | strapping pin = the onboard BOOT button, which doubles as BACK |
+
+Off limits: GPIO11–17 (SPI flash), 18/19 (native USB), 20/21 (UART console). GPIO2/8 are strapping pins
+and GPIO8 drives the RGB LED on many DevKits, so they stay unused.
+
+**Seeed XIAO ESP32C3 (second profile, for battery power later)**: console on USB-Serial-JTAG only.
 
 | XIAO | GPIO | Use | Note |
 |---|---|---|---|
 | D0 | 2 | Battery divider (later) | ADC1; strapping pin, so confirm the divider doesn't affect boot |
 | D1 / D2 / D3 | 3 / 4 / 5 | UP / DOWN / OK | GPIO 0–5 can wake from deep sleep |
-| D7 | 20 | BACK | XIAO console is USB-Serial-JTAG only, which frees UART0 RX |
+| D7 | 20 | BACK | the console is USB-only, which frees UART0 RX |
 | D4 / D5 | 6 / 7 | I2C SDA / SCL | OLED |
-| D8 | 8 | TC SCK | strapping pin; fine as an output after boot |
-| D9 | 9 | TC MISO | strapping pin + BOOT button; MAX output is high-impedance while CS is high |
+| D8 | 8 | TC SCK | strapping pin; fine as an output after boot; must not be pulled low at reset |
+| D6 | 21 | TC MISO | UART0 TX (unused). The boot ROM may drive it at reset; harmless while CS is high |
 | D10 | 10 | TC CS | **10 kΩ pull-up** keeps the MAX quiet during boot |
-| D6 | 21 | spare | not a button: the boot ROM drives it at reset |
+| D9 | 9 | (unused) | strapping pin + BOOT button. Kept free so flashing always works (review of #35) |
 
-A "Generic C3 DevKit" profile keeps the UART console. The board is chosen by a Kconfig option + `sdkconfig.defaults.<board>`.
+The board is chosen by a Kconfig option + `sdkconfig.defaults.<board>` (see `docs/dev-setup.md` → *Board profiles*).
 
 ## Phases
 
@@ -129,6 +145,9 @@ A "Generic C3 DevKit" profile keeps the UART console. The board is chosen by a K
 | M5 Buttons, menu, settings | 4-button menu, persistent settings, factory reset |
 | M6 Health | Thermal protection, watchdogs, diagnostics |
 | M7 Hardening & v1.0 | Fault injection, soak + heat tests, release |
+
+**MVP by 2026-11-28 (D-008)**: M0–M3 plus a minimal M4 (OLED: big °F, Wi-Fi/status, PROBE?). M4's full
+screen set, M5, M6 and M7 come after the MVP. GitHub labels `MVP` / `post-MVP` mark each ticket.
 
 Backlog: XIAO battery %, Artisan WebSocket mode with CHARGE/DROP buttons, browser flashing via ESP Web Tools.
 

@@ -53,11 +53,11 @@ CONFIG_ESP_BROWNOUT_DET_LVL_SEL_5=y
 # Save crash state to the "coredump" partition so a crash in the field can be
 # read later with `idf.py coredump-info` (see docs/dev-setup.md).
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
-# ELF is what coredump-info/-debug expect. verify on v6: the BIN format (and so
-# this choice) may be gone in v6.0.
+# Dedicated stack so a panic in a task that is nearly out of stack can still write its dump.
+CONFIG_ESP_COREDUMP_STACK_SIZE=2048
+# These format and checksum choices apply only to v5.3.1. IDF v6 ignores both and
+# always uses ELF with SHA-256.
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
-# CRC32 is enough to detect a torn or partial dump; SHA256 buys nothing here.
-# verify on v6: this choice may be removed or renamed.
 CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
 
 # --- Bootloader ------------------------------------------------------------
@@ -81,8 +81,9 @@ CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y
 # INFO by default. To debug, raise it in menuconfig (Component config -> Log
 # output -> Default log verbosity) or per tag at runtime with
 # esp_log_level_set("tag", ESP_LOG_DEBUG); runtime raising only goes up to
-# CONFIG_LOG_MAXIMUM_LEVEL. verify on v6: the log component was reworked.
+# CONFIG_LOG_MAXIMUM_LEVEL.
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
 # --- FreeRTOS --------------------------------------------------------------
 # Canary bytes at the end of each task stack, checked on every context switch:
