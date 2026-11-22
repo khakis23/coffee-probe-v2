@@ -1,0 +1,14 @@
+menu "CoffeeProbe bring-up"
+
+    config PROBE_BRINGUP_DIAG
+        bool "Run bring-up diagnostics instead of the app"
+        default n
+        help
+            When enabled, app_main runs hardware diagnostics and never starts the
+            normal app: an I2C bus scan (an OLED is usually 0x3C/0x3D), an SSD1306
+            test pattern to tell SSD1306 from SH1106, and raw 32-bit thermocouple
+            frames decoded as both MAX31855 and MAX6675 once a second.
+            Used to identify the hardware on the bench (#3). Turn it off again
+            for normal development.
+
+endmenu
