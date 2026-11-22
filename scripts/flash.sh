@@ -7,12 +7,12 @@
 #   scripts/flash.sh --port /dev/cu.usbmodem1101 --idf v6.0.3
 #   scripts/flash.sh --build-only       # build, print the folder, don't flash
 #
-# Builds in ~/Library/Caches/coffee-probe/flash/<board>-<idf>[-diag] (outside iCloud; see
-# docs/dev-setup.md) with its own sdkconfig, so it never touches build/ or sdkconfig.
+# Builds in ~/Library/Caches/coffee-probe/flash/<checkout-hash>/<board>-<idf>[-diag] (outside iCloud; see
+# docs/dev-setup.md) with its own sdkconfig, regenerated when the defaults change.
 # Then read the serial output with scripts/serial_capture.py.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 board=xiao idf=v5.3.1 diag=false port="" build_only=false
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -39,7 +39,7 @@ if ! $build_only && [ -z "$port" ]; then
     for p in /dev/cu.usbmodem* /dev/cu.usbserial-* /dev/cu.SLAB_USBtoUART* /dev/cu.wchusbserial*; do
         [ -e "$p" ] && ports+=("$p")
     done
-    if [ ${#ports[@]} -eq 0 ]; then
+    if [ -z "${ports[0]:-}" ]; then
         echo "NO BOARD: no USB serial port found. Ask Tyler to plug the board in (see the device skill)."
         exit 3
     elif [ ${#ports[@]} -gt 1 ]; then
@@ -47,22 +47,39 @@ if ! $build_only && [ -z "$port" ]; then
         exit 2
     fi
     port="${ports[0]}"
+    echo "Detected serial port: $port"
 fi
 
+defaults_fingerprint() (
+    local diag="$1" dir="$2" file
+    export LC_ALL=C
+    cd "$ROOT" || return 1
+    {
+        for file in sdkconfig.defaults*; do
+            shasum "$file" || return 1
+        done
+        if [ "$diag" = true ]; then
+            shasum <"$dir/diag.defaults" || return 1
+        fi
+    } | shasum
+)
+
 name="$board-$idf"; $diag && name="$name-diag"
-dir="$HOME/Library/Caches/coffee-probe/flash/$name"
+checkout="$(printf %s "$ROOT" | shasum)"
+dir="$HOME/Library/Caches/coffee-probe/flash/${checkout:0:10}/$name"
 mkdir -p "$dir"
-# Board defaults only apply to a fresh sdkconfig: regenerate it whenever a defaults file changed.
-if [ -f "$dir/sdkconfig" ] && [ -n "$(find "$ROOT" -maxdepth 1 -name 'sdkconfig.defaults*' -newer "$dir/sdkconfig")" ]; then
-    rm -f "$dir/sdkconfig"
-fi
-extra=""
+extra=()
 if $diag; then
     printf 'CONFIG_PROBE_BRINGUP_DIAG=y\n' >"$dir/diag.defaults"
-    extra="-DPROBE_EXTRA_DEFAULTS=$dir/diag.defaults"
+    extra+=("-DPROBE_EXTRA_DEFAULTS=$dir/diag.defaults")
+fi
+# Board defaults only apply to a fresh sdkconfig, so compare their contents before building.
+fingerprint="$(defaults_fingerprint "$diag" "$dir")"
+if [ ! -f "$dir/.defaults-fingerprint" ] || [ "$(<"$dir/.defaults-fingerprint")" != "$fingerprint" ]; then
+    rm -f "$dir/sdkconfig"
 fi
 target=flash; $build_only && target=build
-port_arg=""; [ -n "$port" ] && port_arg="-p $port"
+[ -z "$port" ] || extra+=(-p "$port")
 
 echo "Building $name${port:+ and flashing $port}"
 # Clean environment so an export.sh sourced for the other IDF version can't leak in.
@@ -72,8 +89,9 @@ env -i HOME="$HOME" TERM=dumb LANG=en_US.UTF-8 \
         set -e
         . "$IDF_PATH/export.sh" >/dev/null
         cd "$0"
-        idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" $3 $4 $5
-    ' "$ROOT" "$dir" "$board" "$extra" "$port_arg" "$target"
+        idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" "${@:3}"
+    ' "$ROOT" "$dir" "$board" "${extra[@]+"${extra[@]}"}" "$target"
+printf '%s\n' "$fingerprint" >"$dir/.defaults-fingerprint"
 
 echo "Build folder: $dir"
 $build_only || echo "Flashed $port. Read output: scripts/serial_capture.py --port $port --reset --seconds 15"

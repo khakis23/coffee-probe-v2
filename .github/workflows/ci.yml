@@ -59,3 +59,11 @@ jobs:
           else
             idf.py -DPROBE_BOARD=${{ matrix.board }} build
           fi
+      - name: Check effective sdkconfig
+        shell: bash
+        run: |
+          if [ "${{ matrix.diag }}" = "true" ]; then
+            scripts/guards.sh --sdkconfig sdkconfig --diag
+          else
+            scripts/guards.sh --sdkconfig sdkconfig
+          fi

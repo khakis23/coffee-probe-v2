@@ -9,20 +9,16 @@
 #   guards                scripts/guards.sh: mechanical checks of the hard rules (AGENTS.md)
 #   host                  host unit tests (test/host, doctest) with the Mac's own compiler
 #   <board>-<idf>[-diag]  firmware build in its own <out>/<job>/ folder with its own sdkconfig,
-#                         so the normal build/ and sdkconfig are never touched
+#                         checked after each build; the normal build/ and sdkconfig are untouched
 #
-# Output goes to ~/Library/Caches/coffee-probe/ci (override with CI_OUT=...), NOT the repo: the repo
-# is in iCloud Drive, which makes "file 2" conflict copies inside busy build folders.
+# Output goes to ~/Library/Caches/coffee-probe/ci/<checkout-hash> (override with CI_OUT=...).
+# Keep builds outside iCloud Drive, which makes "file 2" conflict copies in busy folders.
 #
 # IDF v6 jobs are "allowed to fail" (reported, but don't fail the run), matching continue-on-error
 # in the GitHub workflow, until v6 support lands. Logs: <out>/logs/<job>.log.
 #
-# Exit code: 0 if every required job passed, 1 otherwise.
+# Exit code: 0 if every required job passed, 1 on job failure, 2 on invalid arguments or output setup.
 set -uo pipefail
-
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${CI_OUT:-$HOME/Library/Caches/coffee-probe/ci}"
-LOGS="$OUT/logs"
 
 # IDF version -> install location on this machine (see docs/dev-setup.md).
 idf_path_for() {
@@ -43,14 +39,37 @@ FIRMWARE_JOBS=(
 )
 
 clean=false
+help=false
 filters=()
 for arg in "$@"; do
     case "$arg" in
         --clean) clean=true ;;
-        -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) help=true ;;
+        --*) echo "Unknown option $arg" >&2; exit 2 ;;
         *) filters+=("$arg") ;;
     esac
 done
+
+job_names=(guards host)
+for job in "${FIRMWARE_JOBS[@]}"; do
+    read -r board idf diag <<<"$job"
+    name="$board-$idf"; [ "$diag" = true ] && name="$name-diag"
+    job_names+=("$name")
+done
+for f in "${filters[@]+"${filters[@]}"}"; do
+    matched=false
+    for name in "${job_names[@]}"; do
+        if [[ "$name" == *"$f"* ]]; then
+            matched=true
+            break
+        fi
+    done
+    $matched || { printf "No job matches '%s'\n" "$f" >&2; exit 2; }
+done
+if $help; then
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+fi
 
 selected() {
     [ ${#filters[@]} -eq 0 ] && return 0
@@ -59,10 +78,28 @@ selected() {
     return 1
 }
 
-$clean && rm -rf "$OUT"
-mkdir -p "$LOGS"
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)" || exit 2
+if [ "${CI_OUT+x}" ]; then
+    [ -n "$CI_OUT" ] || { echo "CI_OUT is empty" >&2; exit 2; }
+    out_path="$CI_OUT"
+else
+    checkout="$(printf %s "$ROOT" | shasum)" || exit 2
+    out_path="$HOME/Library/Caches/coffee-probe/ci/${checkout:0:10}"
+fi
+OUT="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$out_path")" || exit 2
+LOGS="$OUT/logs"
 
-results=()   # "name|PASS/FAIL/ALLOWED-FAIL|seconds"
+if $clean; then
+    home_real="$(cd "$HOME" && pwd -P)" || exit 2
+    if [[ "$OUT" != /* || "$OUT" == / || "$OUT" == "$home_real" ||
+          "$OUT/" == "$ROOT/"* || "$ROOT/" == "$OUT/"* ]]; then
+        echo "Refusing to clean unsafe output directory: $OUT" >&2
+        exit 2
+    fi
+    rm -rf "$OUT" || exit 2
+fi
+mkdir -p "$LOGS" || exit 2
+
 required_failed=false
 
 run_job() {   # run_job <name> <allowed_to_fail:true/false> <command...>
@@ -79,8 +116,9 @@ run_job() {   # run_job <name> <allowed_to_fail:true/false> <command...>
     fi
     local secs=$((SECONDS - start))
     printf '%-13s %4ss\n' "$status" "$secs"
-    [ "$status" != PASS ] && tail -n 15 "$log" | sed 's/^/    | /'
-    results+=("$name|$status|$secs")
+    if [ "$status" != PASS ]; then
+        tail -n 15 "$log" | sed 's/^/    | /'
+    fi
 }
 
 host_tests() {
@@ -89,20 +127,36 @@ host_tests() {
     ctest --test-dir "$OUT/host" --output-on-failure
 }
 
+defaults_fingerprint() (
+    local diag="$1" dir="$2" file
+    export LC_ALL=C
+    cd "$ROOT" || return 1
+    {
+        for file in sdkconfig.defaults*; do
+            shasum "$file" || return 1
+        done
+        if [ "$diag" = true ]; then
+            shasum <"$dir/diag.defaults" || return 1
+        fi
+    } | shasum
+)
+
 firmware_build() {   # firmware_build <board> <idf> <diag> <job dir>
-    local board="$1" idf="$2" diag="$3" dir="$4" idf_path extra=""
+    local board="$1" idf="$2" diag="$3" dir="$4" idf_path fingerprint
+    local extra=() config_args=()
     idf_path="$(idf_path_for "$idf")" || { echo "Unknown IDF version $idf"; return 1; }
     [ -f "$idf_path/export.sh" ] || { echo "IDF $idf not installed at $idf_path"; return 1; }
-    mkdir -p "$dir"
-
-    # sdkconfig.defaults only apply when sdkconfig is generated, so regenerate it whenever a
-    # defaults file is newer (otherwise an edited default would silently be ignored here).
-    if [ -f "$dir/sdkconfig" ] && [ -n "$(find "$ROOT" -maxdepth 1 -name 'sdkconfig.defaults*' -newer "$dir/sdkconfig")" ]; then
-        rm -f "$dir/sdkconfig"
-    fi
+    mkdir -p "$dir" || return 1
     if [ "$diag" = true ]; then
-        printf 'CONFIG_PROBE_BRINGUP_DIAG=y\n' >"$dir/diag.defaults"
-        extra="-DPROBE_EXTRA_DEFAULTS=$dir/diag.defaults"
+        printf 'CONFIG_PROBE_BRINGUP_DIAG=y\n' >"$dir/diag.defaults" || return 1
+        extra+=("-DPROBE_EXTRA_DEFAULTS=$dir/diag.defaults")
+        config_args+=(--diag)
+    fi
+
+    # Defaults only apply when sdkconfig is generated, so compare their contents before building.
+    fingerprint="$(defaults_fingerprint "$diag" "$dir")" || return 1
+    if [ ! -f "$dir/.defaults-fingerprint" ] || [ "$(<"$dir/.defaults-fingerprint")" != "$fingerprint" ]; then
+        rm -f "$dir/sdkconfig" || return 1
     fi
 
     # Clean environment (like CI's fresh container): an export.sh already sourced in the
@@ -113,8 +167,10 @@ firmware_build() {   # firmware_build <board> <idf> <diag> <job dir>
             set -e
             . "$IDF_PATH/export.sh" >/dev/null
             cd "$0"
-            idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" $3 build
-        ' "$ROOT" "$dir" "$board" "$extra"
+            idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" "${@:3}" build
+        ' "$ROOT" "$dir" "$board" "${extra[@]+"${extra[@]}"}" || return 1
+    printf '%s\n' "$fingerprint" >"$dir/.defaults-fingerprint" || return 1
+    "$ROOT/scripts/guards.sh" --sdkconfig "$dir/sdkconfig" "${config_args[@]+"${config_args[@]}"}"
 }
 
 echo "Local CI in $ROOT (output: $OUT)"
@@ -133,9 +189,7 @@ for job in "${FIRMWARE_JOBS[@]}"; do
 done
 
 echo
-if [ ${#results[@]} -eq 0 ]; then
-    echo "No jobs matched: ${filters[*]}"; exit 1
-elif $required_failed; then
+if $required_failed; then
     echo "LOCAL CI FAILED (logs in $LOGS/)"; exit 1
 else
     echo "LOCAL CI PASSED"

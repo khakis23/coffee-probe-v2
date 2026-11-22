@@ -18,9 +18,15 @@ scripts/ci-local.sh --clean          # from scratch, like a fresh GitHub runner 
 
 Jobs: `guards`, `host`, `xiao-v5.3.1`, `generic-v5.3.1`, `xiao-v6.0.3`, `generic-v6.0.3`,
 `xiao-v5.3.1-diag`. v6 jobs show `ALLOWED-FAIL` instead of failing the run until #2 lands.
+A filter that matches no job, or an unknown `--option`, exits 2 instead of silently skipping checks.
 
-Output and logs: `~/Library/Caches/coffee-probe/ci/` (outside the repo because of iCloud).
-Each failing job prints its last 15 log lines; the full log is `.../ci/logs/<job>.log`.
+Each firmware job also checks the **generated** sdkconfig (`scripts/guards.sh --sdkconfig`): the
+reliability settings must really be on in the build, and diagnostics on only in the diag job.
+
+Output and logs: `~/Library/Caches/coffee-probe/ci/<checkout-hash>/` (outside the repo because of
+iCloud; one folder per checkout, so git worktrees never share build caches). The first line of the
+run prints the exact folder. Each failing job prints its last 15 log lines; the full log is
+`<folder>/logs/<job>.log`. `--clean` refuses to delete anything that isn't a dedicated output folder.
 
 ## Reading failures
 

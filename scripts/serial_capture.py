@@ -3,6 +3,8 @@
 
 `idf.py monitor` needs a real TTY, which agents don't have. This reads the port for N seconds,
 prints each line with a timestamp (seconds since start), and optionally saves it to a file.
+Opening leaves the reset lines deasserted. A lost connection is retried for up to five seconds.
+Exit status is 0 on success, 1 if --until never matches, or 2 for an unrecovered disconnect.
 
     scripts/serial_capture.py --seconds 15 --reset        # auto-detect port, reboot board first
     scripts/serial_capture.py --port /dev/cu.usbmodem1101 --seconds 60 --out log.txt
@@ -16,9 +18,11 @@ Needs pyserial, which every ESP-IDF Python env has: run it with the IDF Python, 
 """
 import argparse
 import glob
+import os
 import re
 import sys
 import time
+from contextlib import suppress
 
 try:
     import serial  # pyserial
@@ -26,16 +30,70 @@ except ImportError:
     sys.exit("pyserial missing: run with the ESP-IDF Python (see the docstring).")
 
 
-def find_port():
+SERIAL_ERRORS = (serial.SerialException, OSError)
+
+
+def discover_ports():
     ports = []
     for pattern in ("/dev/cu.usbmodem*", "/dev/cu.usbserial-*", "/dev/cu.SLAB_USBtoUART*",
                     "/dev/cu.wchusbserial*"):
         ports += glob.glob(pattern)
+    return ports
+
+
+def find_port():
+    ports = discover_ports()
     if not ports:
         sys.exit("NO BOARD: no USB serial port found. Ask Tyler to plug the board in.")
     if len(ports) > 1:
         sys.exit(f"Several serial ports, pass --port: {' '.join(ports)}")
     return ports[0]
+
+
+def open_port(port, baud):
+    ser = serial.Serial()
+    ser.port = port
+    ser.baudrate = baud
+    ser.timeout = 0.2
+    ser.dtr = False
+    ser.rts = False
+    ser.open()
+    return ser
+
+
+def port_family(port):
+    return "usbmodem" if "usbmodem" in port else "usbserial"
+
+
+def retry_open(port, baud, *, reconnect=False):
+    deadline = time.monotonic() + 5
+    family = port_family(port)
+    while True:
+        candidate = port
+        if reconnect and not os.path.exists(port):
+            candidates = [path for path in discover_ports() if port_family(path) == family]
+            if len(candidates) == 1:
+                candidate = candidates[0]
+        try:
+            ser = open_port(candidate, baud)
+            if candidate != port:
+                print(f"(port changed to {candidate})", flush=True)
+            return ser, candidate
+        except SERIAL_ERRORS:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.3, remaining))
+
+
+def reconnect_port(ser, port, baud):
+    with suppress(*SERIAL_ERRORS):
+        ser.close()
+    try:
+        return retry_open(port, baud, reconnect=True)
+    except SERIAL_ERRORS as exc:
+        print(f"Connection lost and could not reopen {port}: {exc}", file=sys.stderr)
+        return None, port
 
 
 def reset_board(ser):
@@ -59,36 +117,38 @@ def main():
 
     port = args.port or find_port()
     until = re.compile(args.until) if args.until else None
-    out = open(args.out, "w", encoding="utf-8") if args.out else None
-
-    # The native USB port disappears for a moment when the chip resets; retry opening it.
-    deadline = time.monotonic() + 5
-    while True:
-        try:
-            ser = serial.Serial(port, args.baud, timeout=0.2)
-            break
-        except serial.SerialException as e:
-            if time.monotonic() > deadline:
-                sys.exit(f"Cannot open {port}: {e}")
-            time.sleep(0.3)
-
-    if args.reset:
-        reset_board(ser)
-
-    start = time.monotonic()
-    buf = b""
-    matched = False
     try:
+        ser, port = retry_open(port, args.baud)
+    except SERIAL_ERRORS as exc:
+        sys.exit(f"Cannot open {port}: {exc}")
+
+    out = None
+    matched = False
+    buf = b""
+    try:
+        if args.reset:
+            try:
+                reset_board(ser)
+                if port_family(port) == "usbmodem":
+                    # Give native USB time to drop before checking for re-enumeration.
+                    time.sleep(0.3)
+                    if not os.path.exists(port):
+                        ser, port = reconnect_port(ser, port, args.baud)
+            except SERIAL_ERRORS:
+                ser, port = reconnect_port(ser, port, args.baud)
+            if ser is None:
+                return 2
+
+        out = open(args.out, "w", encoding="utf-8") if args.out else None
+        start = time.monotonic()
         while time.monotonic() - start < args.seconds and not matched:
             try:
                 chunk = ser.read(1024)
-            except serial.SerialException:
-                time.sleep(0.3)  # port re-enumerating after a reset
-                try:
-                    ser.close()
-                    ser = serial.Serial(port, args.baud, timeout=0.2)
-                except serial.SerialException:
-                    pass
+            except SERIAL_ERRORS:
+                ser, port = reconnect_port(ser, port, args.baud)
+                if ser is None:
+                    return 2
+                buf = b""
                 continue
             buf += chunk
             while b"\n" in buf:
@@ -103,13 +163,16 @@ def main():
                     matched = True
                     break
     finally:
-        ser.close()
+        if ser is not None:
+            with suppress(*SERIAL_ERRORS):
+                ser.close()
         if out:
             out.close()
     if until and not matched:
         print(f"(--until pattern not seen in {args.seconds:g} s)")
-        sys.exit(1)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
