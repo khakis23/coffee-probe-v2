@@ -7,6 +7,6 @@
 # (Inside the firmware build IDF still adds its "common requirements" implicitly, so the
 # host build is what actually enforces this rule.)
 idf_component_register(
-    SRCS "core.cpp"
+    SRC_DIRS "." "src"
     INCLUDE_DIRS "include"
 )
