@@ -6,6 +6,14 @@ on:
     branches: [main]
 
 jobs:
+  guards:
+    name: Guards (hard rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run scripts/guards.sh
+        run: scripts/guards.sh
+
   host-tests:
     name: Host tests (core + doctest)
     runs-on: ubuntu-latest
@@ -50,4 +58,12 @@ jobs:
             idf.py -DPROBE_BOARD=${{ matrix.board }} -DPROBE_EXTRA_DEFAULTS=/tmp/diag.defaults build
           else
             idf.py -DPROBE_BOARD=${{ matrix.board }} build
+          fi
+      - name: Check effective sdkconfig
+        shell: bash
+        run: |
+          if [ "${{ matrix.diag }}" = "true" ]; then
+            scripts/guards.sh --sdkconfig sdkconfig --diag
+          else
+            scripts/guards.sh --sdkconfig sdkconfig
           fi

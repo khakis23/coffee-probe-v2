@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Runs scripts/guards.sh on exactly what is being committed (the index), not the working tree, so a
+# staged violation can't slip through because the working copy was cleaned up without restaging.
+# Rule violations and iCloud conflict copies ("name 2.cpp") never get committed. Enable per clone:
+#   git config core.hooksPath .agents/git-hooks
+set -uo pipefail
+root="$(git rev-parse --show-toplevel)" || exit 1
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/coffee-probe-precommit.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+git checkout-index -a -f --prefix="$tmp/" || exit 1
+GUARDS_ROOT="$tmp" "$root/scripts/guards.sh"
