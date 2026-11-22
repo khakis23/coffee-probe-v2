@@ -13,3 +13,6 @@ cmake-build-*/
 .DS_Store
 *.swp
 .cache/
+
+# Claude Code agent worktrees
+.claude/worktrees/

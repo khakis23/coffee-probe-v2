@@ -1,0 +1,17 @@
+# CoffeeProbe partition table (4 MB flash). See #5 and docs/architecture.md.
+#
+#   0x000000  bootloader + partition table (fixed by ESP-IDF, up to 0x9000)
+#   0x009000  nvs         24 KB    settings (versioned struct + CRC)
+#   0x00F000  phy_init     4 KB    RF calibration data
+#   0x010000  factory   1.875 MB   application (64 KB-aligned, room to grow)
+#   0x1F0000  coredump    64 KB    last crash, read with `idf.py coredump-info`
+#   0x200000  -- unallocated, 2 MB --
+#
+# The top 2 MB is left free on purpose: OTA slots (otadata + ota_0/ota_1)
+# could go there later without moving nvs or coredump.
+#
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+phy_init,   data, phy,      0xF000,   0x1000
+factory,    app,  factory,  0x10000,  0x1E0000
+coredump,   data, coredump, 0x1F0000, 0x10000
