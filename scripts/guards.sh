@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mechanical checks for the hard rules in AGENTS.md and .agents/rules/.
-# Run by scripts/ci-local.sh and by GitHub Actions. Needs no toolchain.
+# Run by scripts/ci-local.sh (and the manual-only GitHub workflow). Needs no toolchain.
 #
 # If a guard fires, the code is wrong. Never edit a guard or widen an exception to get past it;
 # changing this file needs a DECISIONS.md entry and a second-model review (AGENTS.md).

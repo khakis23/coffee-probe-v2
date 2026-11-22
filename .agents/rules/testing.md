@@ -25,7 +25,7 @@
 ## CI
 
 - `scripts/ci-local.sh` before every push; the full run before opening or merging a PR.
-- `scripts/ci-local.sh` and `.github/workflows/ci.yml` run the same jobs. Change both together.
+- `scripts/ci-local.sh` is the only CI gate. `.github/workflows/ci.yml` (manual-only, D-009) has the same jobs; change both together.
 - IDF v6 jobs are allowed to fail until #2 lands; after that, remove `continue-on-error` and the
   allowed-failure line in `ci-local.sh` in the same PR.
 - Never delete, skip or weaken a failing test or guard to get green. If a test is wrong, say why in

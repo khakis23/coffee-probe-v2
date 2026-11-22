@@ -98,7 +98,7 @@ with a profile whose toolchain is the system one (not `ESP-IDF`).
 CLion recognises doctest: click the gutter ▶ next to a `TEST_CASE` to run or debug just that test,
 or run the `core_tests` target for all of them.
 
-**CI**: `.github/workflows/ci.yml` runs these host tests plus firmware builds (generic and xiao,
+**CI**: `scripts/ci-local.sh` is the CI (see below). `.github/workflows/ci.yml` has the same jobs but is manual-only (D-009); it runs these host tests plus firmware builds (generic and xiao,
 IDF v5.3.1 and v6.0.3, plus generic with bring-up diagnostics on, on both IDF versions) on every PR and push to `main`.
 A failing test or build turns the PR check red. The v6.0.3 jobs are allowed to fail until v6 support lands (#1/#2).
 

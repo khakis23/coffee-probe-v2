@@ -5,7 +5,7 @@ description: Run CoffeeProbe's local CI (guards, host tests, every firmware buil
 
 # Local CI runbook
 
-`scripts/ci-local.sh` is the gate. It mirrors `.github/workflows/ci.yml` job for job.
+`scripts/ci-local.sh` is the only CI gate (GitHub's workflow is manual-only, D-009). It has the same jobs as `.github/workflows/ci.yml`.
 
 ## Run it
 

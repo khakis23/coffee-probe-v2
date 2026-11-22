@@ -1,9 +1,9 @@
 name: CI
 
+# Manual only (D-009): scripts/ci-local.sh on the Mac is the gate, so GitHub doesn't run CI on every
+# push or PR. Run it by hand from the Actions tab if a second, clean-machine check is ever wanted.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   guards:
