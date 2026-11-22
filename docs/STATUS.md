@@ -8,7 +8,7 @@ time to see where things stand.*
 ## In plain English
 
 **Goal: a probe that Artisan can read over Wi-Fi by Saturday, November 28** (the MVP). The foundations are
-built and about to be merged. Nothing measures coffee yet. This week: read the thermocouple, start the
+built and merged. Nothing measures coffee yet. This week: read the thermocouple, start the
 probe's own Wi-Fi network, serve the temperature to Artisan, and show it on the little screen. Buttons,
 settings and overheat protection come after the MVP.
 
@@ -16,7 +16,7 @@ settings and overheat protection come after the MVP.
 
 | When | Claude | Tyler (about 2 hours in total) |
 |---|---|---|
-| Sat 21 – Sun 22 | Merge the foundations (#3's steps are ready) | **Wire the DevKit, thermocouple chip and screen (#3), about 45 min; leave it plugged into the Mac** |
+| Sat 21 – Sun 22 | Foundations merged ✓; #6 task skeleton | **Wire the DevKit, thermocouple chip and screen (#3), about 45 min; leave it plugged into the Mac** |
 | Sun 22 – Mon 23 | Temperature math and chip decoders (#8–#11), task skeleton (#6), using #3's results | |
 | Mon 23 – Tue 24 | Read the real thermocouple (#12); Wi-Fi network (#14); Modbus message handling (#15) | |
 | Wed 25 | Modbus server (#16); Artisan setup guide | **First Artisan connection, about 15 min** |
@@ -28,26 +28,22 @@ Biggest risk: the parts are still unidentified until #3 is wired. Everything aft
 
 ## Milestone
 
-**M0–M1**, merging now; then M2 and M3 (the Artisan path) for the MVP.
+**M0–M1** foundations merged; now M1's remaining tickets, then M2 and M3 (the Artisan path) for the MVP.
 
-## Changes waiting to be merged (in this order)
+## Merged on 2026-11-21 (the foundations)
 
 | PR | Ticket | What it does |
 |---|---|---|
 | #33 | #5 | Crash-safety settings: restart on a freeze, keep a record of crashes |
 | #34 | #2 | Hardware-check mode: reports which screen and temperature chip are wired up |
-| #35 | #4 | Folder layout, and pin settings per board (contains #33 and #34) |
+| #35 | #4 | Folder layout, and pin settings per board |
 | #36 | #7 | Automatic checks: logic tests on the Mac and on GitHub, plus local CI |
-| #38 | (none) | The new way of working, and the rules and tools for AI agents (replaces #37) |
-| next | (none) | Fixes from the review of #33–#36, and the generic DevKit as the default board |
-
-The automatic checks were added in #36, so #33–#35 have none of their own. #36 contains all their
-changes and passes every check, which covers them. Each PR builds on the one above it.
+| #38 | (none) | The new way of working, and the rules and tools for AI agents |
+| #39 | (none) | Fixes from the second-model review, the generic DevKit as default, the MVP scope |
 
 ## Next for Claude
 
-1. Review and merge the changes above (Tyler approved self-merging, D-006).
-2. #6, then #8–#11 (see the MVP plan). When the board is plugged in: flash diagnostics and finish #3's analysis.
+1. #6, then #8–#11 (see the MVP plan). When the board is plugged in: flash diagnostics and finish #3's analysis.
 
 ## Scope (confirmed with Tyler, D-007)
 
