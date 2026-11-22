@@ -31,7 +31,7 @@ changes and passes every check, which covers them. Each PR builds on the one abo
 
 ## Next for Claude
 
-1. Get the changes above merged (see "Waiting on Tyler").
+1. Review and merge the changes above (Tyler approved self-merging, D-006).
 2. #6: the shared store for the latest readings, and the firmware's background tasks.
 3. #8–#11: the temperature math and the code that decodes the two possible thermocouple chips, each
    tested against the chip makers' datasheets.
@@ -40,7 +40,6 @@ changes and passes every check, which covers them. Each PR builds on the one abo
 
 ## Waiting on Tyler
 
-- **Decision**: may Claude merge its own PRs once every check passes? Until then, merging is yours.
 - **#3 (TYLER)**: wire the breadboard and identify the parts. Claude will rewrite it as plain steps
   once PR #34 is merged. Leaving the board plugged into the Mac lets Claude load the firmware itself.
 

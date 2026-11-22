@@ -18,9 +18,8 @@ One issue at a time, roughly in milestone order (M0 → M7), one PR per issue.
 6. Small commits whose message says *why*. Non-obvious ESP-IDF or FreeRTOS choices are explained in
    the commit or PR so the history teaches the next reader.
 7. Push and open the PR (format below). Get the review(s) described under Roles and review.
-8. When local CI and GitHub CI are green and review approves: squash-merge and delete the branch.
-   **Until Tyler approves self-merging (D-001)**, leave the green PR for him instead and list it in
-   `docs/STATUS.md` under "Waiting on Tyler". Update `docs/STATUS.md` in the PR or a follow-up commit.
+8. When local CI and GitHub CI are green and review approves: squash-merge and delete the branch
+   yourself (D-006); don't wait for Tyler. Update `docs/STATUS.md` in the PR or a follow-up commit.
 9. Next issue.
 
 A milestone is finished when its `CLAUDE` issues are merged **and** its `TYLER` hardware tests have

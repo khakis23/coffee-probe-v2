@@ -35,8 +35,8 @@ is the short version for people.
 3. Opens a PR with a plain-English summary. Every change is reviewed by a different AI model than the
    one that wrote it. The sensitive parts (the Wi-Fi link to Artisan, saved settings, crash recovery,
    temperature fault handling) get two independent reviews.
-4. Once every check passes ("green"), the PR is merged. *Proposed:* Claude merges it itself; until
-   Tyler agrees, he clicks merge. **Write "hold" on any PR to stop a merge.**
+4. Once every check passes ("green") and the reviews approve, Claude merges it.
+   **Write "hold" on any PR to stop a merge.**
 
 ## What Tyler might be asked for
 

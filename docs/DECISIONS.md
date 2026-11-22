@@ -36,3 +36,9 @@ checked with Apple clang 21. The firmware already builds as gnu++2b.
 
 The repo is in iCloud Drive, which made conflict copies inside CLion's build folder. `ci-local.sh` and
 `flash.sh` build in `~/Library/Caches/coffee-probe/`.
+
+## D-006 · 2026-11-21 · Claude merges its own PRs (Tyler)
+
+Tyler: "yes always merge yourself. you're the dev." Supersedes the pending part of D-001. Claude
+squash-merges its own PRs once local CI and GitHub CI are green and the required reviews approve.
+Tyler can still write "hold" on any PR to stop a merge.
