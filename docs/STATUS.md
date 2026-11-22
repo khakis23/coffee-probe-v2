@@ -24,7 +24,7 @@ Next: the temperature math, then reading the real thermocouple (milestone M2).
 | #34 | #2 | Hardware-check mode: reports which screen and temperature chip are wired up |
 | #35 | #4 | Folder layout, and pin settings per board (contains #33 and #34) |
 | #36 | #7 | Automatic checks: logic tests on the Mac and on GitHub, plus local CI |
-| #37 | (none) | The new way of working, and the rules and tools for AI agents |
+| #38 | (none) | The new way of working, and the rules and tools for AI agents (replaces #37) |
 
 The automatic checks were added in #36, so #33–#35 have none of their own. #36 contains all their
 changes and passes every check, which covers them. Each PR builds on the one above it.
