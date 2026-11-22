@@ -68,11 +68,16 @@ Input registers via function code 4; function code 3 returns the same values. Al
 |---|---|
 | 0 | BT °F × 10 (sInt16). **Fault → raw −10**, which Artisan's ÷10 divider turns into −1, its "no reading" value |
 | 1 | BT °C × 10 (same fault rule) |
-| 2 | Status bits: probe-open, probe-short, stale, overheat-warn, overheat-crit, low-battery |
+| 2 | Status bits: 0 probe-open, 1 probe-short, 2 stale, 3 overheat-warn, 4 overheat-crit, 5 low-battery, 6 bus-error |
 | 3 | Chip die temp °C × 10 |
-| 4 | Cold-junction temp °C × 10 (MAX6675: "not available" value) |
+| 4 | Cold-junction temp °C × 10 (MAX6675: "not available" = 0x8000) |
 | 5 | Battery % (0xFFFF until the battery feature lands) |
-| 6–7 | Uptime seconds (uint32), firmware version |
+| 6–7 | Uptime seconds (uint32, reg 6 = high word) |
+| 8 | Firmware version, (major << 8) \| minor |
+
+Defined in `components/core/include/core/registers.hpp`; the codec (`core/modbus.hpp`) accepts any unit id and
+answers function codes 3 and 4 only. Everything else gets a Modbus exception; malformed framing closes the
+connection.
 
 ## Reliability design
 
