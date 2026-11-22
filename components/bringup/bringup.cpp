@@ -9,6 +9,7 @@
 #include <cinttypes>
 #include <cstring>
 
+#include "board/board.hpp"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/spi_master.h"
@@ -55,20 +56,16 @@ namespace {
 constexpr const char* kTag = "bringup";
 
 // ---------------------------------------------------------------------------
-// Pin plan (XIAO ESP32C3 default board profile, docs/architecture.md)
-// TODO(#4): use board.hpp
+// Pins come from the selected board profile (components/board/board.hpp).
+// On the XIAO, GPIO8/9 (TC SCK/MISO) are strapping pins: fine for SPI once
+// booted, because the MAX chip's SO output is high-impedance while CS is high
+// (a 10 kΩ pull-up on CS keeps it deselected through reset).
 // ---------------------------------------------------------------------------
-constexpr gpio_num_t kI2cSda = GPIO_NUM_6;
-constexpr gpio_num_t kI2cScl = GPIO_NUM_7;
-// GPIO8 and GPIO9 are strapping pins on the C3: their level at reset picks the
-// boot mode (GPIO9 is also the BOOT button). That's fine for SPI once we've
-// booted; the MAX chip's SO output is high-impedance while CS is high, so it
-// can't disturb the straps during reset.
-constexpr gpio_num_t kTcSck = GPIO_NUM_8;
-constexpr gpio_num_t kTcMiso = GPIO_NUM_9;
-// CS is active-low. The board has a 10 kΩ pull-up so the chip stays deselected
-// (and its SO pin stays off the bus) until our SPI driver takes over the pin.
-constexpr gpio_num_t kTcCs = GPIO_NUM_10;
+constexpr gpio_num_t kI2cSda = board::kBoard.pins.i2c_sda;
+constexpr gpio_num_t kI2cScl = board::kBoard.pins.i2c_scl;
+constexpr gpio_num_t kTcSck = board::kBoard.pins.tc_sck;
+constexpr gpio_num_t kTcMiso = board::kBoard.pins.tc_miso;
+constexpr gpio_num_t kTcCs = board::kBoard.pins.tc_cs;
 
 // ---------------------------------------------------------------------------
 // I2C scan
@@ -339,8 +336,8 @@ void log_banner() {
              esp_get_idf_version());
     ESP_LOGI(kTag, "Tests: I2C scan -> SSD1306 test pattern -> thermocouple frames every %d ms",
              kTcPeriodMs);
-    ESP_LOGI(kTag, "Pins (XIAO plan): I2C SDA=GPIO%d SCL=GPIO%d @ %" PRIu32 " Hz", kI2cSda,
-             kI2cScl, kI2cHz);
+    ESP_LOGI(kTag, "Pins (%s): I2C SDA=GPIO%d SCL=GPIO%d @ %" PRIu32 " Hz",
+             board::kBoard.name, kI2cSda, kI2cScl, kI2cHz);
     ESP_LOGI(kTag, "                  TC SPI2 SCK=GPIO%d MISO=GPIO%d CS=GPIO%d, mode 0 @ %d Hz",
              kTcSck, kTcMiso, kTcCs, kTcSpiHz);
     ESP_LOGI(kTag, "==================================================================");
