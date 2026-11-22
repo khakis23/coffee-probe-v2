@@ -158,7 +158,7 @@ Backlog: XIAO battery %, Artisan WebSocket mode with CHARGE/DROP buttons, browse
 
 ## Verification
 
-- **Every PR**: local CI (`scripts/ci-local.sh`) and GitHub Actions build the firmware for each board profile and run the host tests.
+- **Every PR**: local CI (`scripts/ci-local.sh`) builds the firmware for each board profile and run the host tests.
 - **Each milestone**: the on-device acceptance criteria in its issues.
 - **Fault injection (#26)**: probe unplug/replug, TC short to ground, probe power cycle mid-recording, laptop sleep/wake, a second Wi-Fi client, laptop Wi-Fi toggle, heat gun to warn/critical, corrupt NVS, factory reset, power loss mid-save.
 - **Soak (#27)**: 4 h of continuous Artisan recording with zero resets, stable minimum free heap, and no gaps in the curve.

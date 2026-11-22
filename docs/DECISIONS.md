@@ -76,3 +76,8 @@ Consequences, decided by Claude:
   Per-unit passwords come with the settings work.
 - Order of work: the Artisan path first, the OLED second. If the week runs short, the OLED's big-digit screen
   (#19) is cut first, never Artisan.
+
+## D-009 · 2026-11-21 · Local CI is the only CI gate (Tyler)
+
+Tyler: "turn off and don't run GH CI when running local CI." `.github/workflows/ci.yml` now runs only on manual
+dispatch. `scripts/ci-local.sh` on the Mac decides whether a PR can merge; agents paste its summary in the PR.

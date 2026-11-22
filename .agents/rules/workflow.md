@@ -18,7 +18,7 @@ One issue at a time, roughly in milestone order (M0 → M7), one PR per issue.
 6. Small commits whose message says *why*. Non-obvious ESP-IDF or FreeRTOS choices are explained in
    the commit or PR so the history teaches the next reader.
 7. Push and open the PR (format below). Get the review(s) described under Roles and review.
-8. When local CI and GitHub CI are green and review approves: squash-merge and delete the branch
+8. When local CI is green and review approves: squash-merge and delete the branch
    yourself (D-006); don't wait for Tyler. Update `docs/STATUS.md` in the PR or a follow-up commit.
 9. Next issue.
 
@@ -27,7 +27,7 @@ passed. Hand those tests over with the `tyler-test` skill.
 
 ## Definition of done (every PR)
 
-- `scripts/ci-local.sh` passes locally and GitHub CI is green.
+- `scripts/ci-local.sh` passes on the PR's final commit (paste the summary in the PR). GitHub CI is manual-only (D-009): don't wait for it.
 - Every acceptance criterion in the issue is met and covered by a host test or a recorded hardware
   check, or the PR says which ones wait for a named `TYLER` test.
 - New logic lives in `components/core` with host tests; drivers only connect hardware to it.

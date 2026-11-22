@@ -31,7 +31,7 @@ is the short version for people.
 1. Claude takes the next unblocked `CLAUDE` ticket and comments that it started.
 2. Builds it on a separate branch (a working copy that doesn't affect the main code), with automatic
    checks: rule checks, logic tests on the Mac, and a firmware build for every board
-   (`scripts/ci-local.sh`). GitHub runs the same checks again.
+   (`scripts/ci-local.sh`), run on the Mac before anything is pushed.
 3. Opens a PR with a plain-English summary. Every change is reviewed by a different AI model than the
    one that wrote it. The sensitive parts (the Wi-Fi link to Artisan, saved settings, crash recovery,
    temperature fault handling) get two independent reviews.

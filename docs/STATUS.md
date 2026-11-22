@@ -38,11 +38,12 @@ Biggest risk: the parts are still unidentified until #3 is wired. Everything aft
 | #33 | #5 | Crash-safety settings: restart on a freeze, keep a record of crashes |
 | #34 | #2 | Hardware-check mode: reports which screen and temperature chip are wired up |
 | #35 | #4 | Folder layout, and pin settings per board |
-| #36 | #7 | Automatic checks: logic tests on the Mac and on GitHub, plus local CI |
+| #36 | #7 | Automatic checks: logic tests and firmware builds (local CI on the Mac) |
 | #38 | (none) | The new way of working, and the rules and tools for AI agents |
 | #39 | (none) | Fixes from the second-model review, the generic DevKit as default, the MVP scope |
 | #40 | #8–#11 | Temperature math (°C/°F) and decoders for both thermocouple chips |
 | #41 | #15 | Modbus: how the probe answers Artisan, and which number lives where |
+| next | (none) | GitHub CI turned off; local CI on the Mac is the only check (D-009) |
 
 ## Next for Claude
 

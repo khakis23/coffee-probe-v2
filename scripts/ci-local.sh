@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Local CI: the same checks as .github/workflows/ci.yml, run on this Mac.
+# Local CI: the project's only CI gate (D-009), run on this Mac. Same jobs as the manual-only
+# .github/workflows/ci.yml.
 #
 #   scripts/ci-local.sh            # everything
 #   scripts/ci-local.sh --clean    # wipe the CI build folder first (slow, but like a fresh CI run)

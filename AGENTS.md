@@ -43,7 +43,7 @@ These protect the roast, the hardware and Tyler's trust. `scripts/guards.sh` che
 mechanically. If a guard fires, the code is wrong: never edit a guard or add an exception to pass.
 
 1. **Never push to `main`.** Every change lands through a PR from a `claude/<issue#>-slug` branch.
-2. **Never merge red.** `scripts/ci-local.sh` and GitHub CI must both pass. Never delete, skip or
+2. **Never merge red.** `scripts/ci-local.sh` must pass (it is the only CI gate; GitHub CI is manual-only, D-009). Never delete, skip or
    loosen a failing test to get green.
 3. **`components/core` is pure standard C++.** No IDF, FreeRTOS or driver headers. All logic lives
    there and is host-tested.
@@ -73,7 +73,7 @@ mechanically. If a guard fires, the code is wrong: never edit a guard or add an 
 | `main/app_main.cpp` | Wiring only: init order and task creation | Code |
 | `test/host/` | doctest host tests for `core` | Code |
 | `scripts/` | `ci-local.sh`, `guards.sh`, `flash.sh`, `serial_capture.py` | Rarely; guards need review |
-| `.github/workflows/ci.yml` | GitHub CI, mirrored by `ci-local.sh` | Keep both in sync |
+| `.github/workflows/ci.yml` | Same jobs as `ci-local.sh`, manual-only (never runs automatically) | Keep both in sync |
 | GitHub issues | The plan, one ticket per task, milestones M0–M7, labels `CLAUDE` / `TYLER` | Agents and Tyler |
 
 ## 5. Commands
