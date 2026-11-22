@@ -7,7 +7,9 @@ non-technical and the room is hot. A hang, a frozen reading or a confusing scree
 **Reliability beats features, cleverness and speed of delivery.**
 
 There is one client, **Tyler**. He owns the product but does not write or review code. Agents do all
-development; Tyler makes product decisions and does the physical tasks.
+development; Tyler makes product decisions and does the physical tasks. A few units will be used by
+Tyler and his **non-technical staff**: every screen message and guide must work for them with no help.
+Scope decisions (default board, BT only, no enclosure) are in `docs/DECISIONS.md` (D-007).
 
 This file is the single source of truth for how to work here, for every model and tool (Claude Code,
 Codex, Gemini, anything else). Read it fully at the start of every session.

@@ -57,9 +57,6 @@ constexpr const char* kTag = "bringup";
 
 // ---------------------------------------------------------------------------
 // Pins come from the selected board profile (components/board/board.hpp).
-// On the XIAO, GPIO8/9 (TC SCK/MISO) are strapping pins: fine for SPI once
-// booted, because the MAX chip's SO output is high-impedance while CS is high
-// (a 10 kΩ pull-up on CS keeps it deselected through reset).
 // ---------------------------------------------------------------------------
 constexpr gpio_num_t kI2cSda = board::kBoard.pins.i2c_sda;
 constexpr gpio_num_t kI2cScl = board::kBoard.pins.i2c_scl;
@@ -96,11 +93,12 @@ uint16_t i2c_scan(i2c_master_bus_handle_t bus) {
 }
 
 // ---------------------------------------------------------------------------
-// SSD1306 test pattern
+// OLED controller test patterns
 // ---------------------------------------------------------------------------
 constexpr int kOledW = 128;
 constexpr int kOledH = 64;
 constexpr int kOledPages = kOledH / 8;  // 8 vertical pixels per byte ("page")
+constexpr int kOledPeriodMs = 5000;
 
 // Static so it lives in .bss rather than on the (small) main task stack, and
 // so we never touch the heap.
@@ -108,13 +106,13 @@ std::array<uint8_t, kOledW * kOledPages> g_framebuffer{};
 
 void set_pixel(int x, int y) {
     if (x < 0 || x >= kOledW || y < 0 || y >= kOledH) return;
-    // SSD1306 memory layout: byte (page, column) holds 8 pixels stacked
+    // On both controllers, byte (page, column) holds 8 pixels stacked
     // vertically, bit 0 = top pixel of that page.
     g_framebuffer[static_cast<size_t>((y / 8) * kOledW + x)] |=
         static_cast<uint8_t>(1u << (y % 8));
 }
 
-void draw_test_pattern() {
+void draw_test_pattern(bool sh1106) {
     g_framebuffer.fill(0);
     // 1-px border around the whole panel.
     for (int x = 0; x < kOledW; ++x) {
@@ -131,13 +129,16 @@ void draw_test_pattern() {
         set_pixel(x, y);
         set_pixel(x, kOledH - 1 - y);
     }
-    // Solid 8x8 block in the top-left corner, so a mirrored/flipped panel is obvious.
+    // One or two solid 8x8 blocks identify the phase even without the serial log.
     for (int y = 3; y < 11; ++y) {
-        for (int x = 3; x < 11; ++x) set_pixel(x, y);
+        for (int x = 3; x < 11; ++x) {
+            set_pixel(x, y);
+            if (sh1106) set_pixel(x + 12, y);
+        }
     }
 }
 
-// SSD1306 I2C protocol: every write starts with a control byte.
+// Both controllers' I2C writes start with a control byte.
 // 0x00 = "the following bytes are commands", 0x40 = "the following bytes are pixel data".
 constexpr uint8_t kCtrlCommand = 0x00;
 constexpr uint8_t kCtrlData = 0x40;
@@ -150,17 +151,19 @@ esp_err_t oled_commands(i2c_master_dev_handle_t dev, const uint8_t* cmds, size_t
     return i2c_master_transmit(dev, buf.data(), n + 1, kI2cTimeoutMs);
 }
 
-esp_err_t oled_init_and_draw(i2c_master_dev_handle_t dev) {
-    // Standard SSD1306 128x64 init with the internal charge pump enabled
-    // (the common modules have no external VCC supply for the panel).
-    static constexpr uint8_t kInit[] = {
+esp_err_t oled_init_and_draw(i2c_master_dev_handle_t dev, bool sh1106) {
+    // Enable the internal charge pump on either controller so both phases
+    // can be seen when the module has no external panel supply.
+    const uint8_t init[] = {
         0xAE,        // display off
         0xD5, 0x80,  // clock divide ratio / oscillator frequency
         0xA8, 0x3F,  // multiplex ratio = 64 rows
         0xD3, 0x00,  // display offset = 0
         0x40,        // start line = 0
-        0x8D, 0x14,  // charge pump ON
-        0x20, 0x00,  // horizontal addressing mode (SH1106 ignores this)
+        0x8D, 0x14,  // SSD1306 charge pump on
+        0xAD, 0x8B,  // SH1106 charge pump on
+        0xB0, 0x00, 0x10,  // reset page and column even on an SH1106
+        0x20, static_cast<uint8_t>(sh1106 ? 0x02 : 0x00),  // page or horizontal on SSD1306
         0xA1,        // segment remap: column 127 -> SEG0 (normal left-right)
         0xC8,        // COM scan direction remapped (normal top-bottom)
         0xDA, 0x12,  // COM pins config for 128x64
@@ -171,21 +174,28 @@ esp_err_t oled_init_and_draw(i2c_master_dev_handle_t dev) {
         0xA6,        // normal (not inverted)
         0xAF,        // display on
     };
-    esp_err_t err = oled_commands(dev, kInit, sizeof(kInit));
+    esp_err_t err = oled_commands(dev, init, sizeof(init));
     if (err != ESP_OK) return err;
 
-    // Write window = whole screen; the column pointer wraps to the next page.
-    static constexpr uint8_t kWindow[] = {0x21, 0x00, kOledW - 1, 0x22, 0x00, kOledPages - 1};
-    err = oled_commands(dev, kWindow, sizeof(kWindow));
-    if (err != ESP_OK) return err;
+    if (!sh1106) {
+        // The SSD1306 horizontal window advances the page after each 128 columns.
+        static constexpr uint8_t kWindow[] = {0x21, 0x00, kOledW - 1, 0x22, 0x00,
+                                              kOledPages - 1};
+        err = oled_commands(dev, kWindow, sizeof(kWindow));
+        if (err != ESP_OK) return err;
+    }
+    draw_test_pattern(sh1106);
 
-    draw_test_pattern();
-
-    // Send the framebuffer one page (128 bytes) at a time, each prefixed with
-    // the data control byte.
+    // Split writes so each fits the I2C timeout at 100 kHz.
     std::array<uint8_t, kOledW + 1> chunk{};
     chunk[0] = kCtrlData;
     for (int page = 0; page < kOledPages; ++page) {
+        if (sh1106) {
+            // SH1106 has 132 RAM columns and the panel shows columns 2..129.
+            const uint8_t address[] = {static_cast<uint8_t>(0xB0 | page), 0x02, 0x10};
+            err = oled_commands(dev, address, sizeof(address));
+            if (err != ESP_OK) return err;
+        }
         std::memcpy(&chunk[1], &g_framebuffer[static_cast<size_t>(page * kOledW)], kOledW);
         err = i2c_master_transmit(dev, chunk.data(), chunk.size(), kI2cTimeoutMs);
         if (err != ESP_OK) return err;
@@ -193,7 +203,7 @@ esp_err_t oled_init_and_draw(i2c_master_dev_handle_t dev) {
     return ESP_OK;
 }
 
-void run_i2c_and_oled() {
+i2c_master_dev_handle_t oled_init() {
     i2c_master_bus_config_t bus_cfg{};
     bus_cfg.i2c_port = -1;  // let the driver pick a free port
     bus_cfg.sda_io_num = kI2cSda;
@@ -205,16 +215,17 @@ void run_i2c_and_oled() {
     bus_cfg.flags.enable_internal_pullup = 1;
 
     i2c_master_bus_handle_t bus = nullptr;
+    // Init only: no other task uses the bus.
     esp_err_t err = i2c_new_master_bus(&bus_cfg, &bus);
     if (err != ESP_OK) {
         ESP_LOGE(kTag, "i2c_new_master_bus failed: %s", esp_err_to_name(err));
-        return;
+        return nullptr;
     }
 
     const uint16_t oled_addr = i2c_scan(bus);
     if (oled_addr == 0) {
         ESP_LOGW(kTag, "No OLED at 0x3C/0x3D, skipping display test");
-        return;
+        return nullptr;
     }
 
     i2c_device_config_t dev_cfg{};
@@ -223,30 +234,28 @@ void run_i2c_and_oled() {
     dev_cfg.scl_speed_hz = kI2cHz;
 
     i2c_master_dev_handle_t dev = nullptr;
+    // Init only: no other task uses the bus.
     err = i2c_master_bus_add_device(bus, &dev_cfg, &dev);
     if (err != ESP_OK) {
         ESP_LOGE(kTag, "i2c_master_bus_add_device failed: %s", esp_err_to_name(err));
-        return;
+        return nullptr;
     }
-
-    err = oled_init_and_draw(dev);
-    if (err != ESP_OK) {
-        ESP_LOGE(kTag, "OLED write failed: %s", esp_err_to_name(err));
-        return;
-    }
-    ESP_LOGI(kTag, "OLED test pattern sent to 0x%02X (border + X + top-left block).", oled_addr);
-    ESP_LOGI(kTag, "  Clean border = SSD1306.");
-    ESP_LOGI(kTag, "  Border shifted ~2 px / garbage column at the right edge = SH1106.");
-    ESP_LOGI(kTag, "  Blank screen: wrong controller, bad power, or no charge pump.");
+    return dev;
 }
 
 // ---------------------------------------------------------------------------
 // Thermocouple SPI
 // ---------------------------------------------------------------------------
 constexpr int kTcSpiHz = 1'000'000;
+constexpr int kTcQueueTimeoutMs = 10;
+constexpr int kTcResultTimeoutMs = 50;
 // MAX6675 needs ~220 ms to finish a conversion after CS goes high; reading
 // faster just returns the previous result (or restarts the conversion).
 constexpr int kTcPeriodMs = 1000;
+
+// The SPI driver can still reference the descriptor and RX bytes after a read times out.
+static spi_transaction_t g_tc_transaction{};
+static bool g_tc_in_flight = false;
 
 spi_device_handle_t tc_init() {
     spi_bus_config_t bus_cfg{};
@@ -257,6 +266,7 @@ spi_device_handle_t tc_init() {
     bus_cfg.quadhd_io_num = -1;
     bus_cfg.max_transfer_sz = 4;
 
+    // Init only: no other task uses the bus.
     esp_err_t err = spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_DISABLED);
     if (err != ESP_OK) {
         ESP_LOGE(kTag, "spi_bus_initialize failed: %s", esp_err_to_name(err));
@@ -270,6 +280,7 @@ spi_device_handle_t tc_init() {
     dev_cfg.queue_size = 1;
 
     spi_device_handle_t dev = nullptr;
+    // Init only: no other task uses the bus.
     err = spi_bus_add_device(SPI2_HOST, &dev_cfg, &dev);
     if (err != ESP_OK) {
         ESP_LOGE(kTag, "spi_bus_add_device failed: %s", esp_err_to_name(err));
@@ -279,17 +290,38 @@ spi_device_handle_t tc_init() {
 }
 
 esp_err_t tc_read_frame(spi_device_handle_t dev, uint32_t* frame) {
-    spi_transaction_t t{};
-    t.flags = SPI_TRANS_USE_RXDATA;  // receive into t.rx_data, no buffer needed
-    t.length = 32;                   // clock 32 bits...
-    t.rxlength = 32;                 // ...and keep all of them
-    t.tx_buffer = nullptr;           // receive-only
-    const esp_err_t err = spi_device_polling_transmit(dev, &t);
-    if (err != ESP_OK) return err;
+    spi_transaction_t* completed = nullptr;
+    if (g_tc_in_flight) {
+        const esp_err_t err = spi_device_get_trans_result(dev, &completed, 0);
+        if (err != ESP_OK) {
+            ESP_LOGW(kTag, "TC read: previous SPI transaction still pending");
+            return err;
+        }
+        g_tc_in_flight = false;
+    }
+
+    g_tc_transaction = {};
+    g_tc_transaction.flags = SPI_TRANS_USE_RXDATA;
+    g_tc_transaction.length = 32;
+    g_tc_transaction.rxlength = 32;
+    esp_err_t err =
+        spi_device_queue_trans(dev, &g_tc_transaction, pdMS_TO_TICKS(kTcQueueTimeoutMs));
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "TC read: SPI queue failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    g_tc_in_flight = true;
+    err = spi_device_get_trans_result(dev, &completed, pdMS_TO_TICKS(kTcResultTimeoutMs));
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "TC read: SPI result failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    g_tc_in_flight = false;
+
     // Bytes arrive MSB first: rx_data[0] holds D31..D24.
-    *frame = (static_cast<uint32_t>(t.rx_data[0]) << 24) |
-             (static_cast<uint32_t>(t.rx_data[1]) << 16) |
-             (static_cast<uint32_t>(t.rx_data[2]) << 8) | static_cast<uint32_t>(t.rx_data[3]);
+    const auto& rx = completed->rx_data;
+    *frame = (static_cast<uint32_t>(rx[0]) << 24) | (static_cast<uint32_t>(rx[1]) << 16) |
+             (static_cast<uint32_t>(rx[2]) << 8) | static_cast<uint32_t>(rx[3]);
     return ESP_OK;
 }
 
@@ -297,22 +329,19 @@ const char* guess_chip(uint32_t frame) {
     if (frame == 0x00000000u || frame == 0xFFFFFFFFu) {
         return "all 0s or all 1s: check wiring/power";
     }
-    const uint16_t hi = static_cast<uint16_t>(frame >> 16);
-    const uint16_t lo = static_cast<uint16_t>(frame & 0xFFFF);
-    const Max6675Frame m6675 = decode_max6675(frame);
-    // A MAX6675 has nothing more to say after 16 bits, so the low half is
-    // usually 0x0000 or a repeat of the high half.
-    if (m6675.reserved_ok && (lo == 0x0000 || lo == hi)) {
-        return "looks like MAX6675";
-    }
+    // MAX6675 only defines the first 16 clocks; the rest can read as anything.
+    const bool max6675_plausible = decode_max6675(frame).reserved_ok;
     // MAX31855: D17 and D3 are reserved (always 0), and the cold-junction
     // temperature on a bench should be close to room temperature.
     const Max31855Frame m31855 = decode_max31855(frame);
     const bool reserved_zero = (frame & (1u << 17)) == 0 && (frame & (1u << 3)) == 0;
-    if (reserved_zero && m31855.internal_c > 5.0f && m31855.internal_c < 60.0f) {
-        return "looks like MAX31855";
+    const bool max31855_plausible =
+        reserved_zero && m31855.internal_c >= 5.0f && m31855.internal_c <= 60.0f;
+    if (max6675_plausible && max31855_plausible) {
+        return "ambiguous: both layouts plausible (check the chip marking)";
     }
-    if (m6675.reserved_ok) return "unclear, maybe MAX6675 (low 16 bits not 0 or a repeat)";
+    if (max6675_plausible) return "looks like MAX6675";
+    if (max31855_plausible) return "looks like MAX31855";
     return "unclear: matches neither layout";
 }
 
@@ -334,8 +363,9 @@ void log_banner() {
     ESP_LOGI(kTag, "================ CoffeeProbe bring-up diagnostics ================");
     ESP_LOGI(kTag, "ESP-IDF %s. Normal app is NOT running (CONFIG_PROBE_BRINGUP_DIAG=y).",
              esp_get_idf_version());
-    ESP_LOGI(kTag, "Tests: I2C scan -> SSD1306 test pattern -> thermocouple frames every %d ms",
+    ESP_LOGI(kTag, "Tests: I2C scan, alternating OLED patterns, thermocouple frames every %d ms",
              kTcPeriodMs);
+    ESP_LOGI(kTag, "OLED: exactly one of the two patterns has a clean, complete border.");
     ESP_LOGI(kTag, "Pins (%s): I2C SDA=GPIO%d SCL=GPIO%d @ %" PRIu32 " Hz",
              board::kBoard.name, kI2cSda, kI2cScl, kI2cHz);
     ESP_LOGI(kTag, "                  TC SPI2 SCK=GPIO%d MISO=GPIO%d CS=GPIO%d, mode 0 @ %d Hz",
@@ -347,23 +377,36 @@ void log_banner() {
 
 void run() {
     log_banner();
-    run_i2c_and_oled();
-
+    i2c_master_dev_handle_t oled = oled_init();
     spi_device_handle_t tc = tc_init();
+    const TickType_t oled_period = pdMS_TO_TICKS(kOledPeriodMs);
+    TickType_t wake_tick = xTaskGetTickCount();
+    TickType_t last_oled_tick = wake_tick - oled_period;  // start with SSD1306 on the first pass
+    bool sh1106 = false;
+
     while (true) {
         if (tc != nullptr) {
             uint32_t frame = 0;
             const esp_err_t err = tc_read_frame(tc, &frame);
             if (err == ESP_OK) {
                 log_tc_frame(frame);
-            } else {
-                ESP_LOGE(kTag, "TC read failed: %s", esp_err_to_name(err));
             }
         } else {
             ESP_LOGW(kTag, "TC SPI not initialised; nothing to read");
         }
-        // Blocking delay yields to the idle task, which keeps the task watchdog fed.
-        vTaskDelay(pdMS_TO_TICKS(kTcPeriodMs));
+        if (oled != nullptr && wake_tick - last_oled_tick >= oled_period) {
+            ESP_LOGI(kTag, "%s",
+                     sh1106 ? "OLED test: SH1106-mode pattern (2 blocks). Clean border = SH1106 panel."
+                            : "OLED test: SSD1306-mode pattern (1 block). Clean border = SSD1306 panel.");
+            const esp_err_t err = oled_init_and_draw(oled, sh1106);
+            if (err != ESP_OK) {
+                ESP_LOGE(kTag, "OLED write failed: %s", esp_err_to_name(err));
+            }
+            sh1106 = !sh1106;
+            last_oled_tick = wake_tick;
+        }
+        // Keep the TC schedule independent of how long the OLED writes take.
+        vTaskDelayUntil(&wake_tick, pdMS_TO_TICKS(kTcPeriodMs));
     }
 }
 

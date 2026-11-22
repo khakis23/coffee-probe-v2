@@ -42,3 +42,37 @@ The repo is in iCloud Drive, which made conflict copies inside CLion's build fol
 Tyler: "yes always merge yourself. you're the dev." Supersedes the pending part of D-001. Claude
 squash-merges its own PRs once local CI and GitHub CI are green and the required reviews approve.
 Tyler can still write "hold" on any PR to stop a merge.
+
+## D-007 · 2026-11-21 · Scope check with Tyler (Tyler)
+
+Retro of the requirements in `ideas.md`:
+- **Board**: a generic ESP32-C3 DevKit is the main board and the default profile (as `ideas.md` says).
+  The XIAO stays as a second profile for battery power later. The earlier plan had this the other way round.
+- **Users**: Tyler and his non-technical staff, a few units. Screen messages and guides must work for
+  staff with no help.
+- **Channels**: bean temperature (BT) only in v1. ET would be a backlog item.
+- **Enclosure**: out of scope. The project delivers firmware, docs and a wiring guide.
+
+Follow-ups from the review of #33–#36 that this affects: the XIAO's thermocouple MISO moves from GPIO9 (the
+BOOT-button pin) to GPIO21, so flashing stays reliable; diagnostics CI jobs build the default (generic) board.
+
+## D-008 · 2026-11-21 · One-week MVP: Artisan connected by 2026-11-28 (Tyler)
+
+Tyler needs a working probe connected to Artisan within a week. **MVP** (GitHub label `MVP`):
+reliable thermocouple readings → the probe's own Wi-Fi network → Modbus TCP → stock Artisan plots BT; faults
+show as −1; a minimal OLED (big °F while reading, Wi-Fi name/password and connection status otherwise,
+PROBE? on a fault); the crash-safety config; an Artisan setup guide staff can follow; a 1-hour session
+plus quick fault checks on Tyler's setup.
+
+**Post-MVP** (label `post-MVP`): buttons, settings and the menu (#21–#23), overheat protection (#24),
+liveness/brownout diagnostics (#25), the full fault-injection checklist and the soak test (#26/#27), and the
+v1.0 release (#28).
+
+Consequences, decided by Claude:
+- With no settings menu, the thermocouple chip and grounded-probe mode are fixed at build time (Kconfig),
+  from #3's findings.
+- The Wi-Fi password is one fixed WPA2 password documented in the setup guide (and shown on the OLED), the
+  same on every unit. Acceptable for the MVP: no internet behind it and the Modbus server is read-only.
+  Per-unit passwords come with the settings work.
+- Order of work: the Artisan path first, the OLED second. If the week runs short, the OLED's big-digit screen
+  (#19) is cut first, never Artisan.

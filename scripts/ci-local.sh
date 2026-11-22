@@ -31,11 +31,12 @@ idf_path_for() {
 
 # Keep in sync with the firmware matrix in .github/workflows/ci.yml.
 FIRMWARE_JOBS=(
-    "xiao v5.3.1 false"
     "generic v5.3.1 false"
-    "xiao v6.0.3 false"
+    "xiao v5.3.1 false"
     "generic v6.0.3 false"
-    "xiao v5.3.1 true"
+    "xiao v6.0.3 false"
+    "generic v5.3.1 true"
+    "generic v6.0.3 true"
 )
 
 clean=false

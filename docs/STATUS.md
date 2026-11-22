@@ -7,14 +7,28 @@ time to see where things stand.*
 
 ## In plain English
 
-The foundations are built but not merged yet: the project's folder layout, pin settings for each
-supported board, crash-safety settings, a hardware-check mode for the first wiring test, automatic
-checks that run on every change, and the rules every AI agent follows. Nothing measures coffee yet.
-Next: the temperature math, then reading the real thermocouple (milestone M2).
+**Goal: a probe that Artisan can read over Wi-Fi by Saturday, November 28** (the MVP). The foundations are
+built and about to be merged. Nothing measures coffee yet. This week: read the thermocouple, start the
+probe's own Wi-Fi network, serve the temperature to Artisan, and show it on the little screen. Buttons,
+settings and overheat protection come after the MVP.
+
+## MVP plan (D-008)
+
+| When | Claude | Tyler (about 2 hours in total) |
+|---|---|---|
+| Sat 21 – Sun 22 | Merge the foundations (#3's steps are ready) | **Wire the DevKit, thermocouple chip and screen (#3), about 45 min; leave it plugged into the Mac** |
+| Sun 22 – Mon 23 | Temperature math and chip decoders (#8–#11), task skeleton (#6), using #3's results | |
+| Mon 23 – Tue 24 | Read the real thermocouple (#12); Wi-Fi network (#14); Modbus message handling (#15) | |
+| Wed 25 | Modbus server (#16); Artisan setup guide | **First Artisan connection, about 15 min** |
+| Thu 26 | Minimal screen (#18–#20 MVP parts) | (Thanksgiving: nothing needed) |
+| Fri 27 | Fixes from Wednesday | **1-hour Artisan session + unplug / power-cycle / laptop-sleep checks (#17), about 1 h** |
+| Sat 28 | Final fixes; tag `v0.1.0-mvp`; one-page quick-start | Read the quick-start |
+
+Biggest risk: the parts are still unidentified until #3 is wired. Everything after Monday depends on it.
 
 ## Milestone
 
-**M0 Toolchain & bring-up** and **M1 Foundation**, in progress.
+**M0–M1**, merging now; then M2 and M3 (the Artisan path) for the MVP.
 
 ## Changes waiting to be merged (in this order)
 
@@ -25,6 +39,7 @@ Next: the temperature math, then reading the real thermocouple (milestone M2).
 | #35 | #4 | Folder layout, and pin settings per board (contains #33 and #34) |
 | #36 | #7 | Automatic checks: logic tests on the Mac and on GitHub, plus local CI |
 | #38 | (none) | The new way of working, and the rules and tools for AI agents (replaces #37) |
+| next | (none) | Fixes from the review of #33–#36, and the generic DevKit as the default board |
 
 The automatic checks were added in #36, so #33–#35 have none of their own. #36 contains all their
 changes and passes every check, which covers them. Each PR builds on the one above it.
@@ -32,16 +47,17 @@ changes and passes every check, which covers them. Each PR builds on the one abo
 ## Next for Claude
 
 1. Review and merge the changes above (Tyler approved self-merging, D-006).
-2. #6: the shared store for the latest readings, and the firmware's background tasks.
-3. #8–#11: the temperature math and the code that decodes the two possible thermocouple chips, each
-   tested against the chip makers' datasheets.
-4. #2 follow-up: the newer ESP-IDF version (v6) already builds cleanly; confirm it as the version we
-   use and make its checks required.
+2. #6, then #8–#11 (see the MVP plan). When the board is plugged in: flash diagnostics and finish #3's analysis.
+
+## Scope (confirmed with Tyler, D-007)
+
+A generic ESP32-C3 DevKit is the main board. Tyler and his staff will use a few units. Bean
+temperature only. The enclosure is Tyler's; this project delivers firmware, guides and a wiring guide.
 
 ## Waiting on Tyler
 
-- **#3 (TYLER)**: wire the breadboard and identify the parts. Claude will rewrite it as plain steps
-  once PR #34 is merged. Leaving the board plugged into the Mac lets Claude load the firmware itself.
+- **#3 (TYLER), ready now**: wire the DevKit, thermocouple chip and screen (plain steps in the issue, about
+  45 min), then leave it plugged into the Mac. Needed by Sunday or Monday to keep the MVP on track.
 
 ## Known issues / notes
 

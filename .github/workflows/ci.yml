@@ -36,14 +36,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        board: [xiao, generic]
+        board: [generic, xiao]
         idf: [v5.3.1, v6.0.3]
-        # diag must be a real matrix axis: otherwise the include below would be merged into the
-        # existing xiao/v5.3.1 job instead of adding a separate one.
+        # diag must be a real matrix axis so the include entries add separate jobs.
         diag: [false]
         include:
           # Bring-up diagnostics on, so the CONFIG_PROBE_BRINGUP_DIAG code paths keep compiling.
-          - { board: xiao, idf: v5.3.1, diag: true }
+          - { board: generic, idf: v5.3.1, diag: true }
+          - { board: generic, idf: v6.0.3, diag: true }
     steps:
       - uses: actions/checkout@v4
       - name: Build

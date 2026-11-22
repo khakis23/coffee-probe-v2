@@ -3,7 +3,7 @@ name: device
 description: Work with a real CoffeeProbe board plugged into the Mac - detect it, build and flash firmware or bring-up diagnostics, capture the serial log without a TTY, decode panic backtraces, read core dumps. Use whenever a task needs the real hardware.
 ---
 
-# Device runbook (ESP32-C3: XIAO or generic DevKit)
+# Device runbook (ESP32-C3: generic DevKit by default, or XIAO)
 
 `scripts/flash.sh` builds under `~/Library/Caches/coffee-probe/flash/` (one folder per checkout and
 board/IDF/diag combination), never in the repo, and prints the exact **build folder** at the end.
@@ -29,9 +29,9 @@ ls /dev/cu.usbmodem* /dev/cu.usbserial-* 2>/dev/null
 ## Flash
 
 ```bash
-scripts/flash.sh                       # XIAO profile, app firmware, auto port
+scripts/flash.sh                       # generic DevKit profile, app firmware, auto port
 scripts/flash.sh --diag                # bring-up diagnostics (#2/#3) instead of the app
-scripts/flash.sh --board generic --port /dev/cu.usbserial-0001
+scripts/flash.sh --board xiao --port /dev/cu.usbmodem1101
 scripts/flash.sh --idf v6.0.3          # build with IDF v6
 ```
 
@@ -76,7 +76,9 @@ Needs the ELF of the firmware that crashed. Erase afterwards (same shell, after 
 ## Bring-up diagnostics output
 
 With `--diag` the log shows the pin map, an I2C scan (OLED usually 0x3C/0x3D), and every second a raw
-thermocouple frame decoded both as MAX31855 and MAX6675. Interpretation is in `docs/dev-setup.md` →
+thermocouple frame decoded both as MAX31855 and MAX6675. The OLED alternates every 5 s between an
+SSD1306-mode pattern (one filled block top-left) and an SH1106-mode pattern (two blocks): whichever looks
+clean names the controller. Interpretation is in `docs/dev-setup.md` →
 *Bring-up diagnostics*. All `0`s or all `F`s = wiring or power problem.
 
 ## Rules
