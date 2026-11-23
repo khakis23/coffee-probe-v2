@@ -13,6 +13,9 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "net/net.hpp"
+#include "net/softap_config.hpp"
+#include "nvs_flash.h"
 #include "sdkconfig.h"
 
 #if CONFIG_PROBE_BRINGUP_DIAG
@@ -45,10 +48,22 @@ extern "C" void app_main() {
 
     log_chip_info();
 
+    // Wi-Fi needs NVS for PHY calibration. If Wi-Fi cannot start, the probe is unusable
+    // and the configured panic-to-reboot recovery is the right response during setup.
+    esp_err_t nvs_error = nvs_flash_init();
+    if (nvs_error == ESP_ERR_NVS_NO_FREE_PAGES || nvs_error == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_error = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_error);
+    ESP_ERROR_CHECK(net::start_softap());
+    ESP_LOGI(kTag, "Wi-Fi SSID %s, password (see Artisan guide), IP %s, channel %u", net::ssid(),
+             net::kApIp, static_cast<unsigned>(net::kChannel));
+
     while (true) {
         const int64_t uptime_s = esp_timer_get_time() / 1'000'000;
-        ESP_LOGI(kTag, "alive, uptime %" PRId64 " s, free heap %" PRIu32 " B", uptime_s,
-                 esp_get_free_heap_size());
+        ESP_LOGI(kTag, "alive, uptime %" PRId64 " s, free heap %" PRIu32 " B, clients=%u", uptime_s,
+                 esp_get_free_heap_size(), static_cast<unsigned>(net::client_count()));
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
