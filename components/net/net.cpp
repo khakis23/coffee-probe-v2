@@ -178,13 +178,12 @@ esp_err_t start_softap() {
     if (const auto error = check_step("esp_wifi_start", esp_wifi_start()); error != ESP_OK) {
         return error;
     }
-    if (const auto error =
-            check_step("esp_wifi_set_max_tx_power",
-                       esp_wifi_set_max_tx_power(board::kBoard.wifi_max_tx_power_qdbm));
-        error != ESP_OK) {
-        return error;
-    }
-    return check_step("esp_wifi_set_ps", esp_wifi_set_ps(WIFI_PS_NONE));
+    // The AP is up at this point. TX power and power save are tuning: if either call fails, keep
+    // the working AP (logged by check_step) rather than failing start-up and rebooting.
+    check_step("esp_wifi_set_max_tx_power",
+               esp_wifi_set_max_tx_power(board::kBoard.wifi_max_tx_power_qdbm));
+    check_step("esp_wifi_set_ps", esp_wifi_set_ps(WIFI_PS_NONE));
+    return ESP_OK;
 }
 
 const char* ssid() { return ap_ssid; }
