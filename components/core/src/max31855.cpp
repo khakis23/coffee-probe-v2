@@ -2,7 +2,7 @@
 
 namespace core {
 
-TcReading decode_max31855(uint32_t frame) {
+TcReading decode_max31855(uint32_t frame, bool grounded_probe) {
     constexpr uint32_t kReserved = (1u << 17) | (1u << 3);
     constexpr uint32_t kFaultSummary = 1u << 16;
     constexpr uint32_t kOpen = 1u << 0;
@@ -20,7 +20,11 @@ TcReading decode_max31855(uint32_t frame) {
     }
 
     const DeciC cold_junction = from_sixteenth_c(detail::sign_extend<12>(frame >> 4));
-    if (frame & kFaultSummary) {
+    // A tip welded to the grounded roaster body can flag SCG permanently while the
+    // temperature field is still usable (architecture.md, Reliability design).
+    const uint32_t causes = frame & kFaultCauses;
+    const bool accepted_short = grounded_probe && causes != 0 && (causes & kOpen) == 0;
+    if ((frame & kFaultSummary) && !accepted_short) {
         if (frame & kOpen) {
             return {{0}, cold_junction, TcFault::Open};
         }
@@ -32,7 +36,7 @@ TcReading decode_max31855(uint32_t frame) {
         }
         return kBusError;
     }
-    if (frame & kFaultCauses) {
+    if (!(frame & kFaultSummary) && causes != 0) {
         return kBusError;
     }
 

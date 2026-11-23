@@ -105,3 +105,38 @@ TEST_CASE("MAX31855 rejects invalid bus frames without either temperature") {
         CHECK_FALSE(reading.cold_junction.has_value());
     }
 }
+
+TEST_CASE("MAX31855 grounded mode accepts short flags and still reports an open probe") {
+    // MAX31855 Tables 2–3: 100.00 C = 400 quarters in D31..D18 = 1000 tenths.
+    // 25.00 C = 400 sixteenths in D15..D4 = 250 tenths. D16 is the summary.
+    constexpr uint32_t base = (400u << 18) | (400u << 4) | (1u << 16);
+    constexpr uint32_t scg = 1u << 1;
+    constexpr uint32_t scv = 1u << 2;
+    constexpr uint32_t open = 1u << 0;
+    constexpr struct {
+        uint32_t cause;
+        TcFault ungrounded_fault;
+    } shorts[]{{scg, TcFault::ShortGnd}, {scv, TcFault::ShortVcc}, {scg | scv, TcFault::ShortGnd}};
+
+    for (const auto& short_fault : shorts) {
+        const uint32_t frame = base | short_fault.cause;
+        CAPTURE(frame);
+        CHECK(core::decode_max31855(frame, false).fault == short_fault.ungrounded_fault);
+        const auto grounded = core::decode_max31855(frame, true);
+        CHECK(grounded.fault == TcFault::None);
+        CHECK(grounded.hot == DeciC{1000});
+        REQUIRE(grounded.cold_junction.has_value());
+        CHECK(*grounded.cold_junction == DeciC{250});
+    }
+
+    const auto disconnected = core::decode_max31855(base | open | scg, true);
+    CHECK(disconnected.fault == TcFault::Open);
+    CHECK(disconnected.hot == DeciC{0});
+
+    CHECK(core::decode_max31855(base, true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855((base | scg) & ~(1u << 16), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(base | scg | (1u << 17), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(base | scv | (1u << 3), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(0, true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(0xFFFFFFFFu, true).fault == TcFault::BusError);
+}

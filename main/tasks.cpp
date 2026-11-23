@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "core/sensor_pipeline.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_task_wdt.h"
@@ -11,6 +12,7 @@
 #include "freertos/task.h"
 #include "net/net.hpp"
 #include "state/state_store.hpp"
+#include "thermocouple/thermocouple.hpp"
 
 namespace {
 
@@ -29,9 +31,45 @@ alignas(portBYTE_ALIGNMENT) StackType_t net_stack[kNetStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t ui_stack[kUiStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t health_stack[kHealthStackBytes];
 
+// Kconfig selects the converter and grounded mode. The filter uses SensorConfig defaults.
+core::SensorPipeline sensor_pipeline{core::SensorConfig{}};
+
+void sensor_init() {
+    const esp_err_t error = thermocouple::init();
+    if (error != ESP_OK) {
+        ESP_LOGW(kTag, "%s initialization failed: %s", thermocouple::chip_name(),
+                 esp_err_to_name(error));
+    }
+}
+
 void sensor_step() {
-    const auto uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1'000'000);
-    state::update([uptime_s](core::ProbeState& s) { s.uptime_s = uptime_s; });
+    static core::TcFault previous_fault = core::TcFault::BusError;
+
+    const auto reading = thermocouple::read();
+    const int64_t now_us = esp_timer_get_time();
+    const auto now_ms = static_cast<uint32_t>(now_us / 1000);
+    sensor_pipeline.feed(reading, now_ms);
+    const auto out = sensor_pipeline.output(now_ms);
+    const auto uptime_s = static_cast<uint32_t>(now_us / 1'000'000);
+    state::update([&out, uptime_s](core::ProbeState& s) {
+        s.bt = out.bt;
+        s.fault = out.fault;
+        s.stale = out.stale;
+        s.bt_updated_ms = out.bt_updated_ms;
+        s.cold_junction = out.cold_junction;
+        s.uptime_s = uptime_s;
+    });
+
+    if (reading.fault == core::TcFault::None) {
+        ESP_LOGD(kTag, "thermocouple sample %.1f °F", core::to_f(reading.hot).v / 10.0);
+    } else {
+        ESP_LOGD(kTag, "thermocouple sample fault %u", static_cast<unsigned>(reading.fault));
+    }
+    if (out.fault != previous_fault) {
+        ESP_LOGW(kTag, "thermocouple fault changed from %u to %u",
+                 static_cast<unsigned>(previous_fault), static_cast<unsigned>(out.fault));
+        previous_fault = out.fault;
+    }
 }
 
 void net_step() {
@@ -49,12 +87,14 @@ struct Task {
     uint32_t period_ms;
     void (*step)();
     StackType_t* stack;
+    void (*init)() = nullptr;
     StaticTask_t storage{};
     TaskHandle_t handle{};
 };
 
 Task tasks[] = {
-    {"sensor", 5, kSensorStackBytes, 250, sensor_step, sensor_stack},
+    // MAX6675 needs at least 220 ms between reads to finish a conversion.
+    {"sensor", 5, kSensorStackBytes, 250, sensor_step, sensor_stack, sensor_init},
     {"net", 4, kNetStackBytes, 100, net_step, net_stack},
     {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack},
     {"health", 2, kHealthStackBytes, 1000, health_step, health_stack},
@@ -72,6 +112,9 @@ void run_task(void* arg) {
     }
     ESP_LOGI(kTag, "task %s started", task.name);
 
+    if (task.init != nullptr) {
+        task.init();
+    }
     const TickType_t period = pdMS_TO_TICKS(task.period_ms);
     TickType_t wake = xTaskGetTickCount();
     int64_t last_heartbeat_us = esp_timer_get_time();

@@ -1,12 +1,16 @@
-// thermocouple: placeholder so the component layout builds. the M2 Thermocouple tickets designs the real API.
-
 #pragma once
 
+#include "core/thermocouple.hpp"
 #include "esp_err.h"
 
 namespace thermocouple {
 
-// Does nothing yet; returns ESP_OK.
+// Called by the sensor task. Safe to retry after a failure.
 esp_err_t init();
+
+// Reads one frame. SPI errors return BusError, with up to ~20 ms of SPI waits.
+core::TcReading read();
+
+const char* chip_name();
 
 }  // namespace thermocouple

@@ -1,0 +1,22 @@
+menu "CoffeeProbe thermocouple"
+
+    choice PROBE_TC_CHIP
+        prompt "Thermocouple converter"
+        default PROBE_TC_MAX31855
+
+        config PROBE_TC_MAX31855
+            bool "MAX31855"
+
+        config PROBE_TC_MAX6675
+            bool "MAX6675"
+    endchoice
+
+    config PROBE_TC_GROUNDED
+        bool "Grounded probe (MAX31855)"
+        default n
+        help
+            Enable only for a probe tip that touches the grounded roaster body.
+            The converter and grounded mode are fixed at build time until
+            settings are available (D-008).
+
+endmenu
