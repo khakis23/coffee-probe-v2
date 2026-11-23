@@ -88,7 +88,11 @@ esp_err_t configure_ap_netif(esp_netif_t* ap_netif) {
         return error;
     }
 
-    // With no DNS offer, laptops can show "no internet" without a captive sign-in sheet.
+    // IDF's DHCP server always sends a DNS option: with OFFER_DNS cleared it names the AP's own
+    // address (dhcpserver.c, add_offer_options; same in v5.3.1 and v6.0). We run no DNS server, so
+    // lwIP answers port 53 with ICMP port-unreachable and lookups fail at once. macOS and Windows
+    // then report "no internet" instead of opening a captive sign-in sheet. Keep OFFER_DNS off so
+    // a stray DNS address set elsewhere can never be handed out.
     uint8_t offer_dns = 0;
     if (const auto error = check_step(
             "Disable DHCP DNS offer",
