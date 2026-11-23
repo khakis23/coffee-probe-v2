@@ -1,11 +1,10 @@
-// CoffeeProbe — bring-up smoke test.
-//
-// Proves the toolchain, flashing, and serial monitor work on whatever C3 board
-// is plugged in. Replaced by the real app wiring in Phase 1 of the build plan.
+// CoffeeProbe startup and diagnostics.
 
 #include <cinttypes>
+#include <cstdlib>
 
 #include "board/board.hpp"
+#include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_log.h"
@@ -17,6 +16,8 @@
 #include "net/softap_config.hpp"
 #include "nvs_flash.h"
 #include "sdkconfig.h"
+#include "state/state_store.hpp"
+#include "tasks.hpp"
 
 #if CONFIG_PROBE_BRINGUP_DIAG
 #include "bringup/bringup.hpp"
@@ -47,6 +48,7 @@ extern "C" void app_main() {
 #endif
 
     log_chip_info();
+    ESP_LOGI(kTag, "Firmware version: %s", esp_app_get_description()->version);
 
     // Wi-Fi needs NVS for PHY calibration. If Wi-Fi cannot start, the probe is unusable
     // and the configured panic-to-reboot recovery is the right response during setup.
@@ -56,14 +58,34 @@ extern "C" void app_main() {
         nvs_error = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs_error);
+    if (!state::init()) {
+        ESP_LOGE(kTag, "Unable to initialize shared probe state");
+        // The tasks cannot run without shared state. Panic reboots the probe to retry setup.
+        std::abort();
+    }
     ESP_ERROR_CHECK(net::start_softap());
     ESP_LOGI(kTag, "Wi-Fi SSID %s, password (see Artisan guide), IP %s, channel %u", net::ssid(),
              net::kApIp, static_cast<unsigned>(net::kChannel));
 
+    start_tasks();
+    log_stack_high_water();
+
+    core::ProbeState snapshot{};
+    bool logged_stack_at_60_s = false;
+    TickType_t wake = xTaskGetTickCount();
     while (true) {
         const int64_t uptime_s = esp_timer_get_time() / 1'000'000;
-        ESP_LOGI(kTag, "alive, uptime %" PRId64 " s, free heap %" PRIu32 " B, clients=%u", uptime_s,
-                 esp_get_free_heap_size(), static_cast<unsigned>(net::client_count()));
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // On a lock timeout, keep the last copied counts for the heartbeat.
+        state::snapshot(snapshot);
+        ESP_LOGI(kTag,
+                 "alive, uptime %" PRId64 " s, free heap %" PRIu32
+                 " B, wifi_clients=%u, modbus_clients=%u",
+                 uptime_s, esp_get_free_heap_size(), static_cast<unsigned>(snapshot.wifi_clients),
+                 static_cast<unsigned>(snapshot.modbus_clients));
+        if (!logged_stack_at_60_s && uptime_s >= 60) {
+            log_stack_high_water();
+            logged_stack_at_60_s = true;
+        }
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(1000));
     }
 }
