@@ -23,8 +23,8 @@ Tuesday as planned, so all hardware checks are queued for when he can.
 |---|---|---|
 | Sat 21 – Sun 22 | Foundations ✓, temperature math + decoders (#8–#11) ✓, Modbus codec (#15) ✓ | — |
 | Mon 23 | Wi-Fi (#14) ✓, task skeleton (#6) ✓ | — |
-| Tue 24 | Sensor pipeline (#12) ✓, Modbus server (#16) ✓ | Wiring (#3) not done yet: hardware not available |
-| Wed 25 | Artisan setup guide; minimal screen (#18–#20) | **Wire the board (#3), about 45 min**, as soon as possible |
+| Tue 24 | Sensor pipeline (#12) ✓, Modbus server (#16) ✓, draft Artisan setup guide ✓ | Wiring (#3) not done yet: hardware not available |
+| Wed 25 | Minimal screen (#18–#20) | **Wire the board (#3), about 45 min**, as soon as possible |
 | Thu 26 | Screen; fixes | (Thanksgiving: nothing needed) |
 | Fri 27 | Fixes from the first hardware run | **First Artisan connection + 1-hour session + unplug / power-cycle / laptop-sleep checks (#17), about 1 h 15 min** |
 | Sat 28 | Final fixes; tag `v0.1.0-mvp`; one-page quick-start | Read the quick-start |
@@ -42,8 +42,9 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
+| this | (#17) | Draft `artisan/SETUP.md`: the staff guide for connecting Artisan, labels from Artisan's source, screenshots pending #17 |
 | #45 | #12 | Reads the thermocouple 4×/s, filters glitches, reports an unplugged probe within 0.5 s, recovers only once three readings agree, marks old readings stale (issue open for hardware checks) |
-| this | #16 | The Modbus server Artisan talks to: 4 connection slots, oldest dropped when full, idle connections closed after 10 s, −1 for a bad or old reading; `tools/modbus_poll.py` (issue open for hardware checks) |
+| #46 | #16 | The Modbus server Artisan talks to: 4 connection slots, oldest dropped when full, idle connections closed after 10 s, −1 for a bad or old reading; `tools/modbus_poll.py` (issue open for hardware checks) |
 
 ## Merged on 2026-11-23
 
@@ -56,18 +57,17 @@ Earlier merges (#33–#42, 2026-11-21) are in the git log.
 
 ## Next for Claude
 
-1. **Artisan setup guide** (staff-proof, numbered steps; `artisan/`): Modbus TCP to 192.168.4.1:502,
-   input registers, BT from register 0 with ÷10, sampling interval. Gemini drafts the prose; screenshots
-   wait for the first hardware session.
-2. **Minimal screen #18–#20 (MVP parts):** OLED driver + framebuffer, big °F on the Live screen,
+1. **Minimal screen #18–#20 (MVP parts):** OLED driver + framebuffer, big °F on the Live screen,
    `PROBE?` on a fault, Wi-Fi name/password and connection status otherwise.
-3. When the board is plugged in, one batch of hardware checks (`device` skill, then `tyler-test`):
+2. When the board is plugged in, one batch of hardware checks (`device` skill, then `tyler-test`):
    - flash the diagnostics firmware and finish #3's analysis (which chip, which screen)
    - set the Kconfig chip choice if it's a MAX6675
    - #14: SSID visible, the Mac joins, no captive-portal sheet
    - #12: the 1 Hz `BT ... F, 4 samples/s` log line, unplug → fault within 1 s → replug recovers
    - #16: `tools/modbus_poll.py` reads live °F, kill a client mid-connection, `--clients 5` eviction
    - stack high-water marks ≥ 25 % free
+3. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
+   screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
 
 ## Scope (confirmed with Tyler, D-007)
 
