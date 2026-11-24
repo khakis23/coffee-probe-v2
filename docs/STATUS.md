@@ -42,7 +42,7 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
-| this | #18, #19, #20 | The screen: big °F while reading, `PROBE?` with the likely cause, a top line saying whether Artisan is connected or how to join the Wi-Fi (issues open for hardware checks) |
+| #48 | #18, #19, #20 | The screen: big °F while reading, `PROBE?` with the likely cause, a top line saying whether Artisan is connected or how to join the Wi-Fi (issues open for hardware checks) |
 | #47 | (#17) | Draft `artisan/SETUP.md`: the staff guide for connecting Artisan, labels from Artisan's source, screenshots pending #17 |
 | #45 | #12 | Reads the thermocouple 4×/s, filters glitches, reports an unplugged probe within 0.5 s, recovers only once three readings agree, marks old readings stale (issue open for hardware checks) |
 | #46 | #16 | The Modbus server Artisan talks to: 4 connection slots, oldest dropped when full, idle connections closed after 10 s, −1 for a bad or old reading; `tools/modbus_poll.py` (issue open for hardware checks) |
