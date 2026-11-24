@@ -18,7 +18,7 @@ Claude is the sole developer; Tyler is the customer and does the hands-on hardwa
 | Link to Artisan | **The probe runs its own Wi-Fi network (SoftAP) + Modbus TCP**, which Artisan polls at fixed `192.168.4.1:502`. | Built into stock Artisan, and the most widely used DIY path. Artisan's WebSocket device needs JSON node setup that's hard for a non-technical user. MQTT (Artisan 4.2) needs a broker. |
 | Modbus server | **Our own small read-only server** (function codes 3 and 4), not `esp-modbus` | About 200–300 lines; we control socket timeouts, keepalive and connection slots; no dependency risk on IDF v6; fully host-testable. |
 | ESP-IDF | **v6.0.x** (v5.3 reaches end of life around Jan 2027); fall back to v5.5.x if needed | Latest stable for a new project. Use only the new driver APIs: `i2c_master`, `spi_master`, `temperature_sensor`, `adc_oneshot`. |
-| Display | `esp_lcd` panel I/O over `i2c_master` + **our own 1 KB framebuffer and fonts**; SSD1306 and SH1106 both supported | The OLED part number is unverified (#3 identifies it). Small, testable code. |
+| Display | Direct `i2c_master` driver (no `esp_lcd`, D-011) + **our own 1 KB framebuffer and fonts**; SSD1306 and SH1106 both supported | The OLED part number is unverified (#3 identifies it). Small, testable code. |
 | Language rules | C++ (gnu++2b), no exceptions/RTTI, `std::expected<T, Error>` for errors, no heap use in our code after init | Predictable failure paths. |
 | Logic vs hardware | All logic lives in `components/core` (pure C++, **no IDF headers**) and is unit-tested on the host | Most bugs get caught without flashing. |
 
@@ -48,7 +48,7 @@ components/
                          Modbus PDU/MBAP codec, register map, thermal policy, debouncer
   board/                 Kconfig board choice → board.hpp (the only place GPIOs appear)
   thermocouple/          spi_master driver for MAX31855 / MAX6675
-  display/               i2c_master + esp_lcd, framebuffer, fonts, screens
+  display/               i2c_master OLED driver (SSD1306/SH1106); screens and fonts live in core
   buttons/               GPIO polling → event queue
   net/                   SoftAP setup, Modbus TCP socket server
   storage/               NVS settings (versioned, CRC, validated)
@@ -79,6 +79,24 @@ Defined in `components/core/include/core/registers.hpp`; the codec (`core/modbus
 answers function codes 3 and 4 only. Everything else gets a Modbus exception; malformed framing closes the
 connection.
 
+### Screens (MVP)
+
+Drawn by `core::ui::render(Inputs, Framebuffer)` (pure, host-tested); the `ui` task renders every 100 ms
+and the driver sends only the 128-byte pages that changed.
+
+| Probe state | Screen |
+|---|---|
+| Valid reading (no fault, ≤ 2 s old, checked with `bt_valid(state, now_ms)`) | **Live**: whole °F in 46 px 7-segment digits, right-aligned; `HI`/`LO` outside −99…999 °F |
+| No valid reading in the first 3 s after boot | **Starting** |
+| Open probe | **PROBE?** + "Probe unplugged?" / "Check the plug" |
+| Short to GND or VCC | **PROBE?** + "Probe wire short" / "Check the wires" |
+| Bus error (no answer from the chip) | **PROBE?** + "No probe signal" / "Check probe board" |
+| No fault but no fresh reading (sensor job stalled) | **PROBE?** + "No fresh reading" / "Please wait" |
+
+A one-line top bar on every screen: "Artisan connected" (a Modbus client asked within 5 s), "Waiting for
+Artisan" (a device joined the Wi-Fi), or, with nobody connected, "Join CoffeeProbe-XXXX" alternating with
+"Password: coffeeprobe" every 3 s. Overheat, Diagnostics and burn-in protection come after the MVP.
+
 ## Reliability design
 
 Failure mode → how we handle it:
@@ -96,7 +114,7 @@ Failure mode → how we handle it:
 - **Torn reads**: every 250 ms the net task copies a StateStore snapshot into the register block; the server (same task) never reads StateStore directly. If the state lock times out, the fault value is published rather than a held one.
 - **Crash or hang**: task watchdog on our tasks, liveness counters for the server task, panic → reboot, coredump to flash, reset reason + boot count + last-crash flag on the Diagnostics screen.
 - **Power dips during Wi-Fi TX bursts (~350 mA)**: brownout detector, brownout count in RTC memory. After repeated brownouts, boot with low TX power and show "Check USB cable/power". Hardware: 220–470 µF bulk capacitor.
-- **OLED glitch from ESD or a brownout**: I2C timeouts + bus reset, and the init sequence is resent every 30 s. Pixel shift and dimming prevent burn-in.
+- **OLED glitch from ESD or a brownout**: I2C timeouts + bus reset, and the setup sequence is resent every 30 s with a full redraw. Pixel shift and dimming against burn-in come after the MVP (#20).
 - **Corrupted settings**: versioned struct + CRC; invalid → defaults. NVS only written on an explicit save. Factory reset by holding OK at boot.
 - **Boot time**: splash < 300 ms, network up in ~2 s.
 
