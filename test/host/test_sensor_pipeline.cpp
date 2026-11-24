@@ -174,11 +174,11 @@ TEST_CASE("Sensor pipeline never publishes a connector-bounce spike on replug") 
     pipeline.feed({{2000}, std::nullopt, TcFault::None}, 1000);
     CHECK(pipeline.output(1000).fault == TcFault::Open);
     pipeline.feed({{2010}, std::nullopt, TcFault::None}, 1250);
-    // [8500, 2000, 2010] over 500 ms: allowed spread max(50, 500 * 500 / 1000) = 250, and
-    // 6500 > 250, so the samples do not agree and nothing is published.
+    // 8500 -> 2000 in 250 ms: a step of 6500, allowed max(50, 500 * 250 / 1000) = 125, so the
+    // samples do not agree and nothing is published.
     CHECK(pipeline.output(1250).fault == TcFault::Open);
     pipeline.feed({{2005}, std::nullopt, TcFault::None}, 1500);
-    // The window slides: [2005, 2000, 2010] spreads 10 <= 250, median 2005.
+    // The window slides: 2000 -> 2010 -> 2005, steps 10 and 5 <= 125. Median 2005.
     CHECK(pipeline.output(1500).fault == TcFault::None);
     CHECK(pipeline.output(1500).bt == DeciC{2005});
 }
@@ -280,8 +280,8 @@ TEST_CASE("Sensor pipeline recovers during a fast real change but not from a dis
     for (uint32_t t = 0; t < 750; t += 250) {
         pipeline.feed({{0}, std::nullopt, TcFault::Open}, t);
     }
-    // Replugged while the beans cool at 12 C/s: 200, 197, 194 C at 250 ms steps. Spread 60
-    // tenths over 500 ms; allowed max(50, 500 * 500 / 1000) = 250. Publishes the median, 1970.
+    // Replugged while the beans cool at 12 C/s: 200, 197, 194 C at 250 ms steps. Steps of 30
+    // tenths; allowed per step max(50, 500 * 250 / 1000) = 125. Publishes the median, 1970.
     pipeline.feed({{2000}, std::nullopt, TcFault::None}, 750);
     pipeline.feed({{1970}, std::nullopt, TcFault::None}, 1000);
     pipeline.feed({{1940}, std::nullopt, TcFault::None}, 1250);
@@ -292,20 +292,35 @@ TEST_CASE("Sensor pipeline recovers during a fast real change but not from a dis
     for (uint32_t t = 0; t < 750; t += 250) {
         too_wide.feed({{0}, std::nullopt, TcFault::Open}, t);
     }
-    // Spread 2251 - 2000 = 251 over 500 ms is just above the allowed 250.
+    // 2000 -> 2126 in 250 ms is a step of 126, just above the allowed 125.
     too_wide.feed({{2000}, std::nullopt, TcFault::None}, 750);
-    too_wide.feed({{2251}, std::nullopt, TcFault::None}, 1000);
+    too_wide.feed({{2126}, std::nullopt, TcFault::None}, 1000);
     too_wide.feed({{2100}, std::nullopt, TcFault::None}, 1250);
     CHECK(too_wide.output(1250).fault == TcFault::Open);
+    too_wide.feed({{2110}, std::nullopt, TcFault::None}, 1500);
+    // Slid to 2126 -> 2100 -> 2110: steps 26 and 10. Median 2110.
+    CHECK(too_wide.output(1500).fault == TcFault::None);
+    CHECK(too_wide.output(1500).bt == DeciC{2110});
+
+    SensorPipeline uneven{{}};
+    for (uint32_t t = 0; t < 750; t += 250) {
+        uneven.feed({{0}, std::nullopt, TcFault::Open}, t);
+    }
+    // 200 -> 220 -> 220 C: the whole window spans 200 tenths over 500 ms (25 C allowed over
+    // the span), but the first step is 200 in 250 ms = 80 C/s, above 125 per step. Rejected.
+    uneven.feed({{2000}, std::nullopt, TcFault::None}, 750);
+    uneven.feed({{2200}, std::nullopt, TcFault::None}, 1000);
+    uneven.feed({{2200}, std::nullopt, TcFault::None}, 1250);
+    CHECK(uneven.output(1250).fault == TcFault::Open);
 
     SensorPipeline same_time{{}};
-    // Three samples at the same millisecond: the span allows 0, so the 50-tenth floor applies.
+    // Three samples at the same millisecond: the rate allows 0, so the 50-tenth floor applies.
     same_time.feed({{1000}, std::nullopt, TcFault::None}, 0);
     same_time.feed({{1051}, std::nullopt, TcFault::None}, 0);
     same_time.feed({{1020}, std::nullopt, TcFault::None}, 0);
-    CHECK(same_time.output(0).fault == TcFault::BusError);  // 51 > 50.
+    CHECK(same_time.output(0).fault == TcFault::BusError);  // 1000 -> 1051 is 51 > 50.
     same_time.feed({{1050}, std::nullopt, TcFault::None}, 0);
-    // [1050, 1051, 1020]: spread 31 <= 50, median 1050.
+    // Slid to 1051 -> 1020 -> 1050: steps 31 and 30 <= 50. Median 1050.
     CHECK(same_time.output(0).fault == TcFault::None);
     CHECK(same_time.output(0).bt == DeciC{1050});
 }

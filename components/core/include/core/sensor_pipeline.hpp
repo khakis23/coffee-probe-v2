@@ -13,9 +13,9 @@ struct SensorConfig {
     DeciC calibration_offset{0};  // Added before filtering.
     uint8_t fault_debounce{3};    // Consecutive faulty samples before reporting.
     int16_t max_rate_deci_c_per_s{500};
-    // Smallest allowed max - min of the three consecutive good samples that end a recovery (5 C,
-    // above converter noise). A larger spread is allowed when the max rate over the samples'
-    // time span permits it, so a probe replugged during a fast but real change still recovers.
+    // Smallest allowed step between neighbouring samples of the three consecutive good samples
+    // that end a recovery (5 C, above converter noise). A larger step is allowed when the max
+    // rate over its elapsed time permits, so a probe replugged during a fast real change recovers.
     int16_t recovery_spread{50};
 };
 
@@ -39,6 +39,8 @@ class SensorPipeline {
     // True while a valid output is being published: no reported fault and not stale.
     bool live(uint32_t now_ms) const;
     void reset_window();
+    // True when going from window sample `from` to `to` is within the max rate (see feed()).
+    bool plausible_step(std::size_t from, std::size_t to) const;
 
     SensorConfig config_;
     SensorOutput latest_{};

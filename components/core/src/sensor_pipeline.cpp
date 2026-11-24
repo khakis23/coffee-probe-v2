@@ -18,6 +18,15 @@ void SensorPipeline::reset_window() {
     next_sample_ = 0;
 }
 
+bool SensorPipeline::plausible_step(std::size_t from, std::size_t to) const {
+    const uint32_t elapsed_ms = window_ms_[to] - window_ms_[from];
+    const int64_t allowed = std::max<int64_t>(
+        config_.recovery_spread,
+        static_cast<int64_t>(config_.max_rate_deci_c_per_s) * elapsed_ms / 1000);
+    const int64_t step = static_cast<int64_t>(window_[to].v) - window_[from].v;
+    return step <= allowed && -step <= allowed;
+}
+
 void SensorPipeline::feed(const TcReading& reading, uint32_t now_ms) {
     if (reading.fault != TcFault::None) {
         // The MAX31855 still measures its cold junction with an open or shorted probe.
@@ -72,16 +81,15 @@ void SensorPipeline::feed(const TcReading& reading, uint32_t now_ms) {
             static_cast<int32_t>(std::clamp<int64_t>(target, previous - step, previous + step));
     } else {
         // At boot, after a fault or after a stale gap: publish only when three consecutive
-        // samples agree, so connector bounce never reaches Artisan. "Agree" means a spread a real
-        // probe could produce: at most the max rate over the samples' time span (the same
-        // physical limit the live filter uses), and never less than the noise floor. No rate
-        // limit against the old value: it says nothing about the probe now. The window slides
-        // until the samples agree. next_sample_ now indexes the oldest sample.
-        const uint32_t span_ms = now_ms - window_ms_[next_sample_];
-        const int64_t allowed = std::max<int64_t>(
-            config_.recovery_spread,
-            static_cast<int64_t>(config_.max_rate_deci_c_per_s) * span_ms / 1000);
-        if (max - min > allowed) {
+        // samples agree, so connector bounce never reaches Artisan. "Agree" means every step
+        // between neighbouring samples is one a real probe could make: at most the max rate over
+        // that step's own elapsed time (the same physical limit the live filter uses), and never
+        // less than the noise floor. No rate limit against the old value: it says nothing about
+        // the probe now. The window slides until the samples agree.
+        const std::size_t oldest = next_sample_;  // After the push, the oldest is overwritten next.
+        const std::size_t middle = (oldest + 1) % window_.size();
+        const std::size_t newest = (oldest + 2) % window_.size();
+        if (!plausible_step(oldest, middle) || !plausible_step(middle, newest)) {
             return;
         }
     }
