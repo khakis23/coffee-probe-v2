@@ -14,9 +14,11 @@ namespace {
 
 constexpr const char* kTag = "thermocouple";
 constexpr int kSpiHz = 4'000'000;  // Below the MAX6675's 4.3 MHz limit.
-// A frame takes about 8 us at 4 MHz. 20 ms is at least two ticks at a 100 Hz tick, so a
-// timeout means a stuck bus, not a wait that ended early at the next tick boundary.
-constexpr TickType_t kWait = pdMS_TO_TICKS(20);
+// A frame takes about 8 us at 4 MHz. A tick-based wait can end up to one tick early, and
+// Wi-Fi interrupts can delay the task, so the result wait is generous; both waits together
+// (at most ~70 ms) still fit well inside the 250 ms sample period.
+constexpr TickType_t kQueueWait = pdMS_TO_TICKS(20);
+constexpr TickType_t kResultWait = pdMS_TO_TICKS(50);
 constexpr TickType_t kRetryInterval = pdMS_TO_TICKS(5000);
 constexpr TickType_t kWarnInterval = pdMS_TO_TICKS(10000);
 constexpr core::TcReading kBusError{{0}, std::nullopt, core::TcFault::BusError};
@@ -111,12 +113,12 @@ core::TcReading read() {
     transaction.flags = SPI_TRANS_USE_RXDATA;
     transaction.length = kFrameBits;
     transaction.rxlength = kFrameBits;
-    esp_err_t error = spi_device_queue_trans(device, &transaction, kWait);
+    esp_err_t error = spi_device_queue_trans(device, &transaction, kQueueWait);
     if (error != ESP_OK) {
         return spi_error("SPI queue", error);
     }
     in_flight = true;
-    error = spi_device_get_trans_result(device, &completed, kWait);
+    error = spi_device_get_trans_result(device, &completed, kResultWait);
     if (error != ESP_OK) {
         return spi_error("SPI result", error);
     }

@@ -7,72 +7,87 @@ using core::DeciC;
 using core::SensorPipeline;
 using core::TcFault;
 
-TEST_CASE("Sensor pipeline calibrates each sample and uses a sliding median window") {
+// Every expected value below is computed by hand in the comment next to it.
+
+TEST_CASE("Sensor pipeline publishes the calibrated median once three good samples agree") {
     SensorPipeline pipeline{{.calibration_offset = {10}}};
     pipeline.feed({{-15}, DeciC{250}, TcFault::None}, 0);
     auto out = pipeline.output(0);
-    // -15 + 10 = -5 tenths. A good reading at time zero is already valid.
-    CHECK(out.bt == DeciC{-5});
-    CHECK(out.fault == TcFault::None);
-    CHECK_FALSE(out.stale);
-    CHECK(out.bt_updated_ms == 0);
+    // One sample is not enough: still "no reading yet", but the cold junction is already known.
+    CHECK(out.fault == TcFault::BusError);
+    CHECK(out.stale);
     REQUIRE(out.cold_junction.has_value());
     CHECK(*out.cold_junction == DeciC{250});
 
     pipeline.feed({{-12}, DeciC{260}, TcFault::None}, 250);
-    out = pipeline.output(250);
-    // -12 + 10 = -2. Mean of -5 and -2 = -3.5, rounded away from zero to -4.
-    CHECK(out.bt == DeciC{-4});
-    CHECK(out.bt_updated_ms == 250);
-    REQUIRE(out.cold_junction.has_value());
-    CHECK(*out.cold_junction == DeciC{260});
+    CHECK(pipeline.output(250).fault == TcFault::BusError);
+    CHECK(pipeline.output(250).stale);
 
     pipeline.feed({{1000}, std::nullopt, TcFault::None}, 500);
-    // The calibrated window [-5, -2, 1010] has median -2.
-    CHECK(pipeline.output(500).bt == DeciC{-2});
-    CHECK_FALSE(pipeline.output(500).cold_junction.has_value());
+    out = pipeline.output(500);
+    // Calibrated window [-15+10, -12+10, 1000+10] = [-5, -2, 1010], median -2.
+    CHECK(out.fault == TcFault::None);
+    CHECK_FALSE(out.stale);
+    CHECK(out.bt == DeciC{-2});
+    CHECK(out.bt_updated_ms == 500);
+    CHECK_FALSE(out.cold_junction.has_value());
 
     pipeline.feed({{10}, std::nullopt, TcFault::None}, 750);
-    // The newest sample replaces -5. The window [20, -2, 1010] has median 20.
+    // 20 replaces the oldest (-5): [20, -2, 1010], median 20. The rate limit allows
+    // 500 * 250 / 1000 = 125 from -2, so 20 passes unchanged.
     CHECK(pipeline.output(750).bt == DeciC{20});
 }
 
-TEST_CASE("Sensor pipeline saturates calibrated samples before averaging") {
+TEST_CASE("Sensor pipeline saturates calibrated samples") {
     SensorPipeline high{{.calibration_offset = {10}}};
     high.feed({{32765}, std::nullopt, TcFault::None}, 0);
-    high.feed({{32749}, std::nullopt, TcFault::None}, 250);
-    // 32775 saturates to 32767. Mean of 32767 and 32759 is 32763.
-    CHECK(high.output(250).bt == DeciC{32763});
+    high.feed({{32760}, std::nullopt, TcFault::None}, 0);
+    high.feed({{32750}, std::nullopt, TcFault::None}, 0);
+    // 32775 and 32770 saturate to 32767; 32760 stays. Median of [32767, 32767, 32760] = 32767.
+    // Without saturation 32775 would wrap to a large negative value.
+    CHECK(high.output(0).bt == DeciC{32767});
 
     SensorPipeline low{{.calibration_offset = {-10}}};
     low.feed({{-32765}, std::nullopt, TcFault::None}, 0);
-    low.feed({{-32750}, std::nullopt, TcFault::None}, 250);
-    // -32775 saturates to -32768. Mean of -32768 and -32760 is -32764.
-    CHECK(low.output(250).bt == DeciC{-32764});
+    low.feed({{-32762}, std::nullopt, TcFault::None}, 0);
+    low.feed({{-32750}, std::nullopt, TcFault::None}, 0);
+    // -32775 and -32772 saturate to -32768; -32760 stays. Median = -32768.
+    CHECK(low.output(0).bt == DeciC{-32768});
 }
 
 TEST_CASE("Sensor pipeline rate limits in both directions using elapsed milliseconds") {
     SensorPipeline pipeline{{}};
+    pipeline.feed({{0}, std::nullopt, TcFault::None}, 0);
     pipeline.feed({{0}, std::nullopt, TcFault::None}, 100);
-    pipeline.feed({{1000}, std::nullopt, TcFault::None}, 350);
-    // Target 500. At 500 tenths/s for 250 ms the output can rise by 125.
-    CHECK(pipeline.output(350).bt == DeciC{125});
+    pipeline.feed({{0}, std::nullopt, TcFault::None}, 200);
+    CHECK(pipeline.output(200).bt == DeciC{0});  // First output: median 0, no rate limit.
 
-    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 451);
-    // Target 0 (median). At 500 tenths/s for 101 ms it can fall by 50, to 75.
-    CHECK(pipeline.output(451).bt == DeciC{75});
+    pipeline.feed({{1000}, std::nullopt, TcFault::None}, 450);
+    // [1000, 0, 0], median 0: a single jump never passes the median.
+    CHECK(pipeline.output(450).bt == DeciC{0});
 
-    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 451);
-    // Zero elapsed time still permits a one-tenth step toward -1000.
-    CHECK(pipeline.output(451).bt == DeciC{74});
+    pipeline.feed({{1000}, std::nullopt, TcFault::None}, 700);
+    // [1000, 1000, 0], median 1000. 250 ms at 500 tenths/s allows +125.
+    CHECK(pipeline.output(700).bt == DeciC{125});
 
-    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 10'000'451);
-    // 10,000 s allows 5,000,000 tenths, enough to reach -1000 even though
-    // the rate times milliseconds intermediate exceeds the int32_t range.
-    CHECK(pipeline.output(10'000'451).bt == DeciC{-1000});
+    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 801);
+    // [1000, 1000, -1000], median 1000. 101 ms allows 500 * 101 / 1000 = 50 (truncated): 175.
+    CHECK(pipeline.output(801).bt == DeciC{175});
+
+    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 1001);
+    // [-1000, 1000, -1000], median -1000. 200 ms allows -100: 75.
+    CHECK(pipeline.output(1001).bt == DeciC{75});
+
+    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 1001);
+    // [-1000, -1000, -1000]. Zero elapsed time still allows a one-tenth step: 74.
+    CHECK(pipeline.output(1001).bt == DeciC{74});
+
+    pipeline.feed({{-1000}, std::nullopt, TcFault::None}, 10'001'001);
+    // 10,000,000 ms allows 5,000,000 tenths (500 * 10^7 overflows int32, so 64-bit math): -1000.
+    CHECK(pipeline.output(10'001'001).bt == DeciC{-1000});
 }
 
-TEST_CASE("Sensor pipeline starts stale and measures freshness across clock rollover") {
+TEST_CASE("Sensor pipeline starts stale and measures time across clock rollover") {
     SensorPipeline pipeline{{}};
     const auto initial = pipeline.output(0);
     CHECK(initial.bt == DeciC{0});
@@ -84,21 +99,30 @@ TEST_CASE("Sensor pipeline starts stale and measures freshness across clock roll
     CHECK(pipeline.output(1).stale);
     CHECK(pipeline.output(1).fault == TcFault::BusError);
 
-    pipeline.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 99);
+    // 2^32 - 350, 2^32 - 600 and 2^32 - 850 written as UINT32_MAX - 349 and so on.
+    pipeline.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 849);
+    pipeline.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 599);
+    pipeline.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 349);
+    CHECK(pipeline.output(UINT32_MAX - 349).bt == DeciC{100});
+    pipeline.feed({{1000}, std::nullopt, TcFault::None}, UINT32_MAX - 99);
+    // [1000, 100, 100], median 100.
+    CHECK(pipeline.output(UINT32_MAX - 99).bt == DeciC{100});
     pipeline.feed({{1000}, std::nullopt, TcFault::None}, 150);
-    // 100 ms to wrap plus 150 ms afterward permits a rise of 125 toward 550.
+    // [1000, 1000, 100], median 1000. 100 ms to the wrap plus 150 after = 250 ms: +125 = 225.
     CHECK(pipeline.output(150).bt == DeciC{225});
-    CHECK_FALSE(pipeline.output(2150).stale);  // Exactly 2000 ms after the last good sample.
+    CHECK_FALSE(pipeline.output(2150).stale);  // Exactly 2000 ms after the last output.
     CHECK(pipeline.output(2151).stale);
 
-    SensorPipeline stale_across_wrap{{}};
-    stale_across_wrap.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 99);
-    // 100 ms to wrap plus 1900 ms afterward is exactly the stale boundary.
-    CHECK_FALSE(stale_across_wrap.output(1900).stale);
-    CHECK(stale_across_wrap.output(1901).stale);
+    SensorPipeline across_wrap{{}};
+    across_wrap.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 599);
+    across_wrap.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 349);
+    across_wrap.feed({{100}, std::nullopt, TcFault::None}, UINT32_MAX - 99);
+    // 100 ms to the wrap plus 1900 ms after is exactly the 2000 ms boundary.
+    CHECK_FALSE(across_wrap.output(1900).stale);
+    CHECK(across_wrap.output(1901).stale);
 }
 
-TEST_CASE("Sensor pipeline reports unplugging after 500 ms and recovers on the first good sample") {
+TEST_CASE("Sensor pipeline reports unplugging after 500 ms and recovers after three good samples") {
     SensorPipeline pipeline{{}};
     pipeline.feed({{500}, DeciC{250}, TcFault::None}, 0);
     pipeline.feed({{500}, DeciC{250}, TcFault::None}, 250);
@@ -106,51 +130,82 @@ TEST_CASE("Sensor pipeline reports unplugging after 500 ms and recovers on the f
     pipeline.feed({{0}, DeciC{300}, TcFault::Open}, 750);
     pipeline.feed({{0}, DeciC{300}, TcFault::Open}, 1000);
     const auto pending = pipeline.output(1000);
-    // Two faults leave the last good output intact, including its age and junction reading.
+    // Two faults keep the last output; the MAX31855 still reports its cold junction.
     CHECK(pending.fault == TcFault::None);
     CHECK(pending.bt == DeciC{500});
     CHECK_FALSE(pending.stale);
     CHECK(pending.bt_updated_ms == 500);
     REQUIRE(pending.cold_junction.has_value());
-    CHECK(*pending.cold_junction == DeciC{250});
+    CHECK(*pending.cold_junction == DeciC{300});
 
     pipeline.feed({{0}, DeciC{300}, TcFault::Open}, 1250);
-    // 1250 - 750 = 500 ms from the first Open sample.
+    // Reported at the third faulty sample: 1250 - 750 = 500 ms after the first (criterion: < 1 s).
     CHECK(pipeline.output(1250).fault == TcFault::Open);
     CHECK(pipeline.output(1250).bt_updated_ms == 500);
-    CHECK_FALSE(pipeline.output(1250).stale);
     CHECK(pipeline.output(2501).stale);
 
     pipeline.feed({{2500}, DeciC{310}, TcFault::None}, 2750);
-    // The first good sample publishes 2500 immediately. A 2250 ms rate limit
-    // against the old output would only allow a rise of 1125 tenths.
-    const auto recovered = pipeline.output(2750);
+    pipeline.feed({{2500}, DeciC{310}, TcFault::None}, 3000);
+    // Two good samples are not enough to clear the fault.
+    CHECK(pipeline.output(3000).fault == TcFault::Open);
+    REQUIRE(pipeline.output(3000).cold_junction.has_value());
+    CHECK(*pipeline.output(3000).cold_junction == DeciC{310});
+
+    pipeline.feed({{2500}, DeciC{310}, TcFault::None}, 3250);
+    // Third good sample: median 2500 published as is. A rate limit against the old 500 over
+    // 2750 ms would have allowed only 500 + 1375 = 1875.
+    const auto recovered = pipeline.output(3250);
     CHECK(recovered.fault == TcFault::None);
     CHECK_FALSE(recovered.stale);
     CHECK(recovered.bt == DeciC{2500});
-    CHECK(recovered.bt_updated_ms == 2750);
-    REQUIRE(recovered.cold_junction.has_value());
-    CHECK(*recovered.cold_junction == DeciC{310});
+    CHECK(recovered.bt_updated_ms == 3250);
+}
+
+TEST_CASE("Sensor pipeline never publishes a connector-bounce spike on replug") {
+    SensorPipeline pipeline{{}};
+    for (uint32_t t = 0; t < 750; t += 250) {
+        pipeline.feed({{0}, std::nullopt, TcFault::Open}, t);
+    }
+    CHECK(pipeline.output(500).fault == TcFault::Open);
+
+    pipeline.feed({{8500}, std::nullopt, TcFault::None}, 750);  // 850 C bounce artifact.
+    pipeline.feed({{2000}, std::nullopt, TcFault::None}, 1000);
+    CHECK(pipeline.output(1000).fault == TcFault::Open);
+    pipeline.feed({{2010}, std::nullopt, TcFault::None}, 1250);
+    // Median of [8500, 2000, 2010] = 2010: the spike never reaches the output.
+    CHECK(pipeline.output(1250).fault == TcFault::None);
+    CHECK(pipeline.output(1250).bt == DeciC{2010});
 }
 
 TEST_CASE("Sensor pipeline ignores one bus glitch and resets its debounce on a good sample") {
     SensorPipeline pipeline{{.fault_debounce = 2}};
-    pipeline.feed({{100}, std::nullopt, TcFault::None}, 0);
-    pipeline.feed({{0}, std::nullopt, TcFault::BusError}, 250);
-    CHECK(pipeline.output(250).fault == TcFault::None);
-    pipeline.feed({{102}, std::nullopt, TcFault::None}, 500);
-    // The glitch stays out of the window. Mean of 100 and 102 is 101.
-    CHECK(pipeline.output(500).bt == DeciC{101});
-    CHECK(pipeline.output(500).fault == TcFault::None);
-    pipeline.feed({{0}, std::nullopt, TcFault::Open}, 750);
+    pipeline.feed({{100}, DeciC{250}, TcFault::None}, 0);
+    pipeline.feed({{100}, DeciC{250}, TcFault::None}, 250);
+    pipeline.feed({{100}, DeciC{250}, TcFault::None}, 500);
+    pipeline.feed({{0}, std::nullopt, TcFault::BusError}, 750);
+    // One glitch: no fault, and the last cold junction is kept (a bus error carries none).
     CHECK(pipeline.output(750).fault == TcFault::None);
-    pipeline.feed({{0}, std::nullopt, TcFault::BusError}, 1000);
-    // Both faulty samples count, and the second sample determines the reported fault.
-    CHECK(pipeline.output(1000).fault == TcFault::BusError);
+    REQUIRE(pipeline.output(750).cold_junction.has_value());
+    CHECK(*pipeline.output(750).cold_junction == DeciC{250});
+
+    pipeline.feed({{106}, DeciC{250}, TcFault::None}, 1000);
+    // The glitch stays out of the window: [106, 100, 100], median 100.
+    CHECK(pipeline.output(1000).bt == DeciC{100});
+    CHECK(pipeline.output(1000).fault == TcFault::None);
+
+    pipeline.feed({{0}, DeciC{260}, TcFault::Open}, 1250);
+    CHECK(pipeline.output(1250).fault == TcFault::None);
+    pipeline.feed({{0}, std::nullopt, TcFault::BusError}, 1500);
+    // Both faulty samples count, and the second determines the reported fault. A reported
+    // bus error means the cold junction is unknown too.
+    CHECK(pipeline.output(1500).fault == TcFault::BusError);
+    CHECK_FALSE(pipeline.output(1500).cold_junction.has_value());
 }
 
 TEST_CASE("Sensor pipeline fault count saturates and still reports the latest fault") {
     SensorPipeline pipeline{{.fault_debounce = UINT8_MAX}};
+    pipeline.feed({{100}, std::nullopt, TcFault::None}, 0);
+    pipeline.feed({{100}, std::nullopt, TcFault::None}, 0);
     pipeline.feed({{100}, std::nullopt, TcFault::None}, 0);
     for (uint32_t sample = 1; sample < 255; ++sample) {
         pipeline.feed({{0}, std::nullopt, TcFault::Open}, sample * 250);

@@ -10,7 +10,7 @@ namespace core {
 enum class TcFault : uint8_t { None, Open, ShortGnd, ShortVcc, BusError };
 
 struct TcReading {
-    // Valid only when fault is None, including shorts accepted in MAX31855 grounded mode.
+    // Valid only when fault is None, including short-to-GND accepted in MAX31855 grounded mode.
     DeciC hot;  // Zero for a reported fault.
     std::optional<DeciC> cold_junction;
     TcFault fault;

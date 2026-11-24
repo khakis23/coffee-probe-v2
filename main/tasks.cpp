@@ -85,12 +85,17 @@ void sensor_step() {
         ESP_LOGD(kTag, "thermocouple sample fault %s", fault_name(reading.fault));
     }
     if (now_us - last_summary_us >= 1'000'000) {
-        const int32_t bt_f = core::to_f(out.bt).v;  // Tenths of a degree, printed without floats.
-        const char* sign = bt_f < 0 ? "-" : "";
-        const int32_t abs_f = bt_f < 0 ? -bt_f : bt_f;
-        ESP_LOGI(kTag, "BT %s%ld.%ld F, %s%s, %lu samples/s", sign, static_cast<long>(abs_f / 10),
-                 static_cast<long>(abs_f % 10), fault_name(out.fault), out.stale ? ", stale" : "",
-                 static_cast<unsigned long>(samples_this_second));
+        if (out.fault == core::TcFault::None && !out.stale) {
+            const int32_t bt_f = core::to_f(out.bt).v;  // Tenths of a degree, printed without floats.
+            const char* sign = bt_f < 0 ? "-" : "";
+            const int32_t abs_f = bt_f < 0 ? -bt_f : bt_f;
+            ESP_LOGI(kTag, "BT %s%ld.%ld F, %lu samples/s", sign, static_cast<long>(abs_f / 10),
+                     static_cast<long>(abs_f % 10), static_cast<unsigned long>(samples_this_second));
+        } else {
+            // Never print a held value next to a fault: it reads like a real temperature.
+            ESP_LOGI(kTag, "BT --, %s%s, %lu samples/s", fault_name(out.fault),
+                     out.stale ? ", stale" : "", static_cast<unsigned long>(samples_this_second));
+        }
         samples_this_second = 0;
         last_summary_us = now_us;
     }

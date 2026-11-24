@@ -21,9 +21,10 @@ TcReading decode_max31855(uint32_t frame, bool grounded_probe) {
 
     const DeciC cold_junction = from_sixteenth_c(detail::sign_extend<12>(frame >> 4));
     // A tip welded to the grounded roaster body can flag SCG permanently while the
-    // temperature field is still usable (architecture.md, Reliability design).
+    // temperature field is still usable (architecture.md, Reliability design). Only SCG:
+    // the roaster body is never at VCC, so SCV still means a real wiring fault.
     const uint32_t causes = frame & kFaultCauses;
-    const bool accepted_short = grounded_probe && causes != 0 && (causes & kOpen) == 0;
+    const bool accepted_short = grounded_probe && causes == kShortGnd;
     if ((frame & kFaultSummary) && !accepted_short) {
         if (frame & kOpen) {
             return {{0}, cold_junction, TcFault::Open};

@@ -17,7 +17,9 @@ struct SensorConfig {
 
 struct SensorOutput {
     DeciC bt{0};                       // Valid only when fault == None && !stale.
-    TcFault fault{TcFault::BusError};  // No reading yet until the first good sample.
+    // BusError ("no reading yet") until three good samples agree; after a reported fault, the
+    // fault stays until three new good samples agree (see feed()).
+    TcFault fault{TcFault::BusError};
     bool stale{true};
     uint32_t bt_updated_ms{0};  // Time of the last good sample that produced bt.
     std::optional<DeciC> cold_junction{};
