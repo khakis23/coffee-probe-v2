@@ -14,7 +14,9 @@ namespace {
 
 constexpr const char* kTag = "thermocouple";
 constexpr int kSpiHz = 4'000'000;  // Below the MAX6675's 4.3 MHz limit.
-constexpr TickType_t kWait = pdMS_TO_TICKS(10);
+// A frame takes about 8 us at 4 MHz. 20 ms is at least two ticks at a 100 Hz tick, so a
+// timeout means a stuck bus, not a wait that ended early at the next tick boundary.
+constexpr TickType_t kWait = pdMS_TO_TICKS(20);
 constexpr TickType_t kRetryInterval = pdMS_TO_TICKS(5000);
 constexpr TickType_t kWarnInterval = pdMS_TO_TICKS(10000);
 constexpr core::TcReading kBusError{{0}, std::nullopt, core::TcFault::BusError};

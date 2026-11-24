@@ -34,6 +34,22 @@ alignas(portBYTE_ALIGNMENT) StackType_t health_stack[kHealthStackBytes];
 // Kconfig selects the converter and grounded mode. The filter uses SensorConfig defaults.
 core::SensorPipeline sensor_pipeline{core::SensorConfig{}};
 
+const char* fault_name(core::TcFault fault) {
+    switch (fault) {
+        case core::TcFault::None:
+            return "ok";
+        case core::TcFault::Open:
+            return "probe open";
+        case core::TcFault::ShortGnd:
+            return "short to GND";
+        case core::TcFault::ShortVcc:
+            return "short to VCC";
+        case core::TcFault::BusError:
+            return "bus error";
+    }
+    return "unknown";
+}
+
 void sensor_init() {
     const esp_err_t error = thermocouple::init();
     if (error != ESP_OK) {
@@ -60,14 +76,27 @@ void sensor_step() {
         s.uptime_s = uptime_s;
     });
 
-    if (reading.fault == core::TcFault::None) {
-        ESP_LOGD(kTag, "thermocouple sample %.1f °F", core::to_f(reading.hot).v / 10.0);
-    } else {
-        ESP_LOGD(kTag, "thermocouple sample fault %u", static_cast<unsigned>(reading.fault));
+    // One INFO line per second with the sample count, so the default log level shows both the
+    // published temperature and that sampling runs at 4 Hz without printing every sample.
+    static uint32_t samples_this_second = 0;
+    static int64_t last_summary_us = now_us;
+    ++samples_this_second;
+    if (reading.fault != core::TcFault::None) {
+        ESP_LOGD(kTag, "thermocouple sample fault %s", fault_name(reading.fault));
+    }
+    if (now_us - last_summary_us >= 1'000'000) {
+        const int32_t bt_f = core::to_f(out.bt).v;  // Tenths of a degree, printed without floats.
+        const char* sign = bt_f < 0 ? "-" : "";
+        const int32_t abs_f = bt_f < 0 ? -bt_f : bt_f;
+        ESP_LOGI(kTag, "BT %s%ld.%ld F, %s%s, %lu samples/s", sign, static_cast<long>(abs_f / 10),
+                 static_cast<long>(abs_f % 10), fault_name(out.fault), out.stale ? ", stale" : "",
+                 static_cast<unsigned long>(samples_this_second));
+        samples_this_second = 0;
+        last_summary_us = now_us;
     }
     if (out.fault != previous_fault) {
-        ESP_LOGW(kTag, "thermocouple fault changed from %u to %u",
-                 static_cast<unsigned>(previous_fault), static_cast<unsigned>(out.fault));
+        ESP_LOGW(kTag, "thermocouple fault changed from %s to %s", fault_name(previous_fault),
+                 fault_name(out.fault));
         previous_fault = out.fault;
     }
 }
