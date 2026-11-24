@@ -17,6 +17,7 @@
 #include "nvs_flash.h"
 #include "sdkconfig.h"
 #include "state/state_store.hpp"
+#include "storage/storage.hpp"
 #include "tasks.hpp"
 
 #if CONFIG_PROBE_BRINGUP_DIAG
@@ -26,6 +27,22 @@
 namespace {
 
 constexpr const char* kTag = "coffee_probe";
+
+const char* settings_status_name(core::SettingsStatus status) {
+    switch (status) {
+        case core::SettingsStatus::Ok:
+            return "Ok";
+        case core::SettingsStatus::Missing:
+            return "Missing";
+        case core::SettingsStatus::Corrupt:
+            return "Corrupt";
+        case core::SettingsStatus::UnknownVersion:
+            return "UnknownVersion";
+        case core::SettingsStatus::Repaired:
+            return "Repaired";
+    }
+    return "Invalid";
+}
 
 void log_chip_info() {
     esp_chip_info_t chip{};
@@ -58,6 +75,15 @@ extern "C" void app_main() {
         nvs_error = nvs_flash_init();
     }
     ESP_ERROR_CHECK(nvs_error);
+
+    const auto settings = storage::load();
+    if (settings.status == core::SettingsStatus::Ok) {
+        ESP_LOGI(kTag, "settings loaded");
+    } else {
+        ESP_LOGW(kTag, "settings %s, repaired fields: %u%s", settings_status_name(settings.status),
+                 static_cast<unsigned>(settings.repaired_fields),
+                 settings.status == core::SettingsStatus::Repaired ? "" : ", using defaults");
+    }
     if (!state::init()) {
         ESP_LOGE(kTag, "Unable to initialize shared probe state");
         // The tasks cannot run without shared state. Panic reboots the probe to retry setup.

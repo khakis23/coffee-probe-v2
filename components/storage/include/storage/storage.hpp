@@ -1,12 +1,11 @@
-// storage: placeholder so the component layout builds. the M5 settings tickets designs the real API.
-
 #pragma once
 
+#include "core/settings.hpp"
 #include "esp_err.h"
 
 namespace storage {
 
-// Does nothing yet; returns ESP_OK.
-esp_err_t init();
+core::SettingsLoad load();
+esp_err_t save(const core::Settings& settings);
 
 }  // namespace storage
