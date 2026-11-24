@@ -42,6 +42,7 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
+| this | #21 | Button presses: turns the buttons' noisy signal into clean "short press" and "long press" events (for the settings menu, after the MVP) |
 | #48 | #18, #19, #20 | The screen: big °F while reading, `PROBE?` with the likely cause, a top line saying whether Artisan is connected or how to join the Wi-Fi (issues open for hardware checks) |
 | #47 | (#17) | Draft `artisan/SETUP.md`: the staff guide for connecting Artisan, labels from Artisan's source, screenshots pending #17 |
 | #45 | #12 | Reads the thermocouple 4×/s, filters glitches, reports an unplugged probe within 0.5 s, recovers only once three readings agree, marks old readings stale (issue open for hardware checks) |
@@ -76,7 +77,7 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
    - stack high-water marks ≥ 25 % free
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
-3. Post-MVP, in milestone order: #21 button debouncer (core + host tests), then #22 settings model.
+3. Post-MVP, in milestone order: #22 settings model (in progress), then #23 menu, #24 overheat, #25 diagnostics.
 
 ## Scope (confirmed with Tyler, D-007)
 
