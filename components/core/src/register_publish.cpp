@@ -41,8 +41,13 @@ RegisterBlock build_registers(const ProbeState& state, uint32_t now_ms, uint16_t
             status |= kBusError;
             break;
     }
+    if (state.thermal == ThermalLevel::Warn) {
+        status |= kOverheatWarn;
+    } else if (state.thermal == ThermalLevel::Critical) {
+        status |= kOverheatCrit;
+    }
     regs[reg::kStatus] = status;
-    regs[reg::kDieC10] = kNotAvailable;
+    regs[reg::kDieC10] = state.die ? to_reg(state.die->v) : kNotAvailable;
     regs[reg::kColdJunctionC10] =
         state.cold_junction ? to_reg(state.cold_junction->v) : kNotAvailable;
     regs[reg::kBatteryPct] = kBatteryUnknown;

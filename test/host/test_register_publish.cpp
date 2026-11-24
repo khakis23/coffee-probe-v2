@@ -87,3 +87,23 @@ TEST_CASE("firmware version packs decimal major and minor into separate bytes") 
     CHECK(core::firmware_version_from("v.2") == 0);
     CHECK(core::firmware_version_from(nullptr) == 0);
 }
+
+TEST_CASE("overheat levels set their status bits and the die temperature is published") {
+    core::ProbeState state;
+    state.bt = {1000};
+    state.fault = core::TcFault::None;
+    state.stale = false;
+    state.die = core::DeciC{-5};  // -0.5 C: raw 0xFFFB.
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kStatus] == 0);
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kDieC10] == 0xFFFB);
+
+    state.thermal = core::ThermalLevel::Warn;  // Bit 3.
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kStatus] == 0x08);
+    state.thermal = core::ThermalLevel::Critical;  // Bit 4 only, not 3 as well.
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kStatus] == 0x10);
+    // Overheat doesn't hide a valid temperature: 100.0 C still published.
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kBtC10] == 1000);
+
+    state.die.reset();
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kDieC10] == 0x8000);
+}

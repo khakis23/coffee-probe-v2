@@ -24,6 +24,22 @@ void centered(Fb& fb, int y, std::string_view a, std::string_view b = {}, int sc
 }
 
 void draw_top_bar(const Inputs& in, Fb& fb) {
+    if (in.state.thermal == ThermalLevel::Warn) {
+        // Overheat warning replaces the connection line: inverted, so it stands out at a glance.
+        // The temperature below keeps updating; the probe keeps working.
+        fb.fill_rect(0, 0, Fb::kWidth, kDividerY);
+        const std::string_view banner = "BOX TOO HOT: MOVE IT";
+        const int x = (Fb::kWidth - Fb::text_width(banner)) / 2;
+        Fb inverted;  // Drawn as dark pixels on the lit bar.
+        inverted.text(x, kBarY + 1, banner);
+        for (int y = 0; y < kDividerY; ++y) {
+            for (int px = 0; px < Fb::kWidth; ++px) {
+                if (inverted.pixel(px, y)) fb.set_pixel(px, y, false);
+            }
+        }
+        fb.hline(0, kDividerY, Fb::kWidth);
+        return;
+    }
     switch (link_status(in)) {
         case Link::Artisan:
             centered(fb, kBarY, "Artisan connected");
@@ -151,6 +167,14 @@ void draw_probe(const Inputs& in, Fb& fb) {
 
 void draw_starting(Fb& fb) { centered(fb, 30, "Starting", {}, 2); }
 
+void draw_too_hot(Fb& fb) {
+    // The whole screen, no top bar: the probe is about to sleep to protect itself.
+    centered(fb, 4, "TOO HOT", {}, 3);  // Rows 4..24.
+    centered(fb, 32, "Cooling down", {});
+    centered(fb, 44, "Back in 1 minute", {});
+    centered(fb, 54, "Move probe box away", {});
+}
+
 }  // namespace
 
 Link link_status(const Inputs& in) {
@@ -167,6 +191,9 @@ Link link_status(const Inputs& in) {
 }
 
 Screen choose_screen(const Inputs& in) {
+    if (in.state.thermal == ThermalLevel::Critical) {
+        return Screen::TooHot;
+    }
     // Temperature first whenever it is trustworthy. bt_valid checks the reading's age itself,
     // so a stale number is never drawn as if it were live.
     if (bt_valid(in.state, in.now_ms)) {
@@ -184,8 +211,13 @@ Screen choose_screen(const Inputs& in) {
 
 void render(const Inputs& in, Framebuffer& fb) {
     fb.clear();
+    const Screen screen = choose_screen(in);
+    if (screen == Screen::TooHot) {
+        draw_too_hot(fb);
+        return;
+    }
     draw_top_bar(in, fb);
-    switch (choose_screen(in)) {
+    switch (screen) {
         case Screen::Live:
             draw_live(in, fb);
             break;
@@ -195,6 +227,8 @@ void render(const Inputs& in, Framebuffer& fb) {
         case Screen::Starting:
             draw_starting(fb);
             break;
+        case Screen::TooHot:
+            break;  // Drawn above.
     }
 }
 
