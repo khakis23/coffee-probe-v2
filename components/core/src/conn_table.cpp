@@ -11,8 +11,7 @@ std::size_t ConnTable::admit(int fd, uint32_t now_ms, int* evicted_fd) {
             slot = i;
             break;
         }
-        // Admissions since this one; unsigned subtraction survives the counter wrapping.
-        if (next_seq_ - conns_[i].seq > next_seq_ - conns_[slot].seq) {
+        if (conns_[i].seq < conns_[slot].seq) {
             slot = i;
         }
     }

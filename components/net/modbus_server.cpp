@@ -151,11 +151,14 @@ void accept_clients(uint32_t now_ms) {
             return;
         }
 
-        // A peer that connected and reset before we got to it must not evict a live client.
+        // A peer that connected and then reset or closed before we got to it must not evict a
+        // live client: a pending error, or EOF already queued (peek returns 0), means it's gone.
         int pending_error = 0;
         socklen_t length = sizeof(pending_error);
+        uint8_t peek_byte = 0;
         if (lwip_getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending_error, &length) != 0 ||
-            pending_error != 0) {
+            pending_error != 0 ||
+            lwip_recv(fd, &peek_byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0) {
             close_socket(fd, now_ms);
             continue;
         }

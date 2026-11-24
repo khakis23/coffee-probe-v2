@@ -14,7 +14,8 @@ struct Conn {
     uint32_t opened_ms{0};
     uint32_t last_rx_ms{0};
     // Admission order. The clock can't order two connections admitted in the same millisecond.
-    uint32_t seq{0};
+    // 64-bit so it never wraps (2^64 admissions), which keeps "oldest = smallest" simply true.
+    uint64_t seq{0};
 };
 
 class ConnTable {
@@ -30,7 +31,7 @@ public:
 
 private:
     std::array<Conn, kMaxConns> conns_{};
-    uint32_t next_seq_{0};
+    uint64_t next_seq_{0};
 };
 
 }  // namespace core
