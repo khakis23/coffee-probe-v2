@@ -1,0 +1,17 @@
+menu "CoffeeProbe display"
+
+    choice PROBE_OLED_CONTROLLER
+        prompt "OLED controller"
+        default PROBE_OLED_SSD1306
+        help
+            The controller is fixed at build time until settings are available
+            (D-008). Issue #3 identifies which controller is on the board.
+
+        config PROBE_OLED_SSD1306
+            bool "SSD1306 (0.96 inch)"
+
+        config PROBE_OLED_SH1106
+            bool "SH1106 (1.3 inch)"
+    endchoice
+
+endmenu

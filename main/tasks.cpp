@@ -5,6 +5,8 @@
 
 #include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
+#include "core/ui.hpp"
+#include "display/display.hpp"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -14,6 +16,7 @@
 #include "freertos/task.h"
 #include "net/modbus_server.hpp"
 #include "net/net.hpp"
+#include "net/softap_config.hpp"
 #include "state/state_store.hpp"
 #include "thermocouple/thermocouple.hpp"
 
@@ -142,7 +145,28 @@ void net_step() {
     });
 }
 
-void ui_step() {}      // OLED work starts in #18.
+void ui_init() {
+    // The driver logs the error and rate-limits its warnings across retries.
+    if (display::init() != ESP_OK) {
+        ESP_LOGD(kTag, "UI will retry display initialization");
+    }
+}
+
+void ui_step() {
+    static core::Framebuffer frame;
+    static core::ui::Inputs in;
+    core::ProbeState snapshot;
+    // A lock timeout leaves a fault/stale snapshot so the UI shows a probe fault.
+    (void)state::snapshot(snapshot);
+    const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    in.state = snapshot;
+    in.now_ms = now_ms;
+    in.ssid = net::ssid();
+    in.password = net::kPassword;
+    core::ui::render(in, frame);
+    display::show(frame, now_ms);
+}
+
 void health_step() {}  // Thermal protection starts in #24.
 
 struct Task {
@@ -164,7 +188,7 @@ Task tasks[] = {
     // and its watchdog between rounds. The 20 ms poll period adds at most 20 ms of polling
     // latency to Artisan's 1–3 s polling interval.
     {"net", 4, kNetStackBytes, 20, net_step, net_stack, net_init},
-    {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack},
+    {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack, ui_init},
     {"health", 2, kHealthStackBytes, 1000, health_step, health_stack},
 };
 
