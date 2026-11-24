@@ -3,13 +3,16 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_task_wdt.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "net/modbus_server.hpp"
 #include "net/net.hpp"
 #include "state/state_store.hpp"
 #include "thermocouple/thermocouple.hpp"
@@ -106,9 +109,37 @@ void sensor_step() {
     }
 }
 
+void net_init() {
+    // start() logs failures and service() retries.
+    (void)net::modbus::start();
+}
+
 void net_step() {
-    const uint8_t clients = net::client_count();
-    state::update([clients](core::ProbeState& s) { s.wifi_clients = clients; });
+    constexpr uint32_t kPublishPeriodMs = 250;
+    const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    static uint32_t next_publish_ms = now_ms;
+    static const uint16_t firmware_version =
+        core::firmware_version_from(esp_app_get_description()->version);
+    const uint32_t publish_lateness_ms = now_ms - next_publish_ms;
+    if (publish_lateness_ms <= INT32_MAX) {
+        next_publish_ms = now_ms + kPublishPeriodMs - publish_lateness_ms % kPublishPeriodMs;
+        core::ProbeState snapshot;
+        // A state lock timeout leaves the default fault/stale snapshot in place: Artisan sees -1
+        // rather than a held value. build_registers re-checks the reading's age itself.
+        (void)state::snapshot(snapshot);
+        const auto snapshot_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+        net::modbus::publish(core::build_registers(snapshot, snapshot_ms, firmware_version));
+    }
+
+    net::modbus::service(now_ms, 0);
+    const uint8_t wifi_clients = net::client_count();
+    const uint8_t modbus_clients = net::modbus::client_count();
+    const uint32_t last_request_ms = net::modbus::last_request_ms();
+    state::update([=](core::ProbeState& s) {
+        s.wifi_clients = wifi_clients;
+        s.modbus_clients = modbus_clients;
+        s.modbus_last_request_ms = last_request_ms;
+    });
 }
 
 void ui_step() {}      // OLED work starts in #18.
@@ -129,7 +160,10 @@ struct Task {
 Task tasks[] = {
     // MAX6675 needs at least 220 ms between reads to finish a conversion.
     {"sensor", 5, kSensorStackBytes, 250, sensor_step, sensor_stack, sensor_init},
-    {"net", 4, kNetStackBytes, 100, net_step, net_stack},
+    // Polling select() with zero wait lets vTaskDelayUntil yield to the single-core idle task
+    // and its watchdog between rounds. The 20 ms poll period adds at most 20 ms of polling
+    // latency to Artisan's 1–3 s polling interval.
+    {"net", 4, kNetStackBytes, 20, net_step, net_stack, net_init},
     {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack},
     {"health", 2, kHealthStackBytes, 1000, health_step, health_stack},
 };

@@ -81,3 +81,16 @@ Consequences, decided by Claude:
 
 Tyler: "turn off and don't run GH CI when running local CI." `.github/workflows/ci.yml` now runs only on manual
 dispatch. `scripts/ci-local.sh` on the Mac decides whether a PR can merge; agents paste its summary in the PR.
+
+## D-010 · 2026-11-24 · How the Modbus server keeps R4 (Claude)
+
+- **"Never more than 4 sockets"** means at most 4 client sockets whenever the server isn't running.
+  Evicting the oldest client needs `accept()` first, so a 5th exists only until the oldest is closed in
+  the same call, with no other work in between. Refusing new clients instead would contradict "the
+  oldest is evicted": a laptop that reconnects after sleeping must win over its own dead socket.
+- **Pacing:** the net task runs every 20 ms with `vTaskDelayUntil`, and `select()` polls with zero
+  timeout. Letting `select()` pace the task was rejected: with readable sockets it returns at once every
+  round, the task never sleeps, and the idle task's watchdog reboots the single-core C3. 20 ms of
+  added latency is nothing next to Artisan's 1–3 s polling.
+- **Bounded work per round:** clients are served before new connections are accepted, at most 2
+  accepts per round, one `recv()` per client.

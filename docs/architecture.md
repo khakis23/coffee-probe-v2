@@ -84,13 +84,16 @@ connection.
 Failure mode → how we handle it:
 
 - **Probe unplugged or broken**: MAX fault bits → fault value to Artisan + big `PROBE?` on the OLED within 1 s. Recovers by itself when fixed.
-- **Grounded-tip probe** (common on drum roasters; makes the MAX31855 report a short-to-GND fault nonstop): a "Grounded probe" setting ignores short faults. Hardware: 10 nF across T+/T−.
-- **Noise spikes**: median-of-3 + rate-of-change limit. A reading older than 2 s sets the stale flag.
-- **MAX6675 timing**: reads ≥ 220 ms apart, paced with `vTaskDelayUntil`. SPI clock ≤ 4 MHz, mode 0.
+- **Grounded-tip probe** (common on drum roasters; makes the MAX31855 report a short-to-GND fault nonstop): a "Grounded probe" option accepts short-to-GND only (short-to-VCC and open still fault). Until settings exist it is the Kconfig option `PROBE_TC_GROUNDED`, off by default. In this mode a crushed cable shorting to ground can't be detected. Hardware: 10 nF across T+/T−.
+- **Noise spikes**: median-of-3, then a 50 °C/s rate-of-change limit (`core::SensorPipeline`). Faults are debounced over 3 samples (one glitch never shows; an unplugged probe shows 500 ms after the first bad sample). A reading older than 2 s is stale; consumers check age themselves with `bt_valid(state, now_ms)`, so a frozen sensor task can't leave an old reading valid.
+- **Replug bounce**: at boot, after a fault and after a gap longer than 2 s, nothing is published until three consecutive good samples agree (each step within the rate limit, 5 °C noise floor). Any fault during recovery restarts it.
+- **Impossible frames**: MAX31855 values outside the K-type range (−270…+1372 °C) and MAX6675 `0x0000` (data line stuck low) count as bus errors. An SPI transfer stuck for 5 s panics (coredump, reboot).
+- **MAX6675 timing**: reads ≥ 220 ms apart, paced with `vTaskDelayUntil` at 250 ms; the driver also waits out the rest of a worst-case conversion if a read comes early (MAX6675 230 ms, MAX31855 110 ms), since pulling CS low aborts a conversion. SPI clock ≤ 4 MHz, mode 0.
 - **Wi-Fi blips**: AP mode only (never AP+STA, which would cause channel hops), fixed channel 1/6/11, country code set, WPA2-PSK, max 4 clients, TX power set per board.
 - **Captive-portal trap**: no DNS server on the probe, so lookups fail fast and the OS says "no internet" instead of popping up a captive-portal sheet whose Cancel button disconnects.
-- **Stale TCP connections**: 4 socket slots, ~10 s idle timeout, lwIP keepalive, oldest evicted when full.
-- **Torn reads**: the snapshot is copied into the register block under a lock; the server never reads StateStore directly.
+- **Stale TCP connections**: 4 socket slots, 10 s idle timeout, lwIP keepalive (~11 s to detect a vanished laptop), oldest evicted when full. Evicting needs `accept()` first, so a 5th socket exists only until the oldest is closed in the same call.
+- **Net task never blocks**: it runs every 20 ms (`vTaskDelayUntil`), `select()` polls with zero timeout, recv/send are non-blocking, at most 2 accepts per round and existing clients are served first. The idle task always gets CPU on the single core.
+- **Torn reads**: every 250 ms the net task copies a StateStore snapshot into the register block; the server (same task) never reads StateStore directly. If the state lock times out, the fault value is published rather than a held one.
 - **Crash or hang**: task watchdog on our tasks, liveness counters for the server task, panic → reboot, coredump to flash, reset reason + boot count + last-crash flag on the Diagnostics screen.
 - **Power dips during Wi-Fi TX bursts (~350 mA)**: brownout detector, brownout count in RTC memory. After repeated brownouts, boot with low TX power and show "Check USB cable/power". Hardware: 220–470 µF bulk capacitor.
 - **OLED glitch from ESD or a brownout**: I2C timeouts + bus reset, and the init sequence is resent every 30 s. Pixel shift and dimming prevent burn-in.
