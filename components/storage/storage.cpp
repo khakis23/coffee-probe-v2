@@ -26,6 +26,10 @@ core::SettingsLoad load() {
         error = nvs_get_blob(handle, kKey, buffer.data(), &length);
         nvs_close(handle);
         if (error == ESP_OK) {
+            // An entry that exists but is empty is a damaged write, not a fresh board.
+            if (length == 0) {
+                return {.status = core::SettingsStatus::Corrupt};
+            }
             return core::decode_settings(std::span{buffer}.first(length));
         }
         if (error == ESP_ERR_NVS_INVALID_LENGTH) {
@@ -40,6 +44,12 @@ core::SettingsLoad load() {
 }
 
 esp_err_t save(const core::Settings& settings) {
+    // Never store a value the next boot would have to repair: refuse it instead.
+    uint8_t out_of_range = 0;
+    (void)core::repair_settings(settings, &out_of_range);
+    if (out_of_range > 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
     const auto blob = core::encode_settings(settings);
     nvs_handle_t handle{};
     esp_err_t error = nvs_open(kNamespace, NVS_READWRITE, &handle);

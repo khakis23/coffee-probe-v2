@@ -4,7 +4,8 @@ namespace core {
 namespace {
 
 constexpr uint32_t kMagic = 0x54535043;  // CPST in little-endian byte order.
-constexpr std::size_t kCrcOffset = kSettingsHeaderSize + kSettingsPayloadSize;
+constexpr std::size_t kCrcOffset = kSettingsHeaderSize + kSettingsPayloadSize;  // In a v1 blob.
+constexpr std::size_t kCrcSize = 4;
 
 uint16_t read_u16(std::span<const uint8_t> bytes, std::size_t offset) {
     return static_cast<uint16_t>(bytes[offset] | (bytes[offset + 1] << 8));
@@ -58,10 +59,15 @@ SettingsLoad decode_v1(std::span<const uint8_t> payload) {
     return result;
 }
 
+// Each version checks its own payload length: the header and CRC checks only prove the blob is
+// intact, not that it has the layout this version expects.
 SettingsLoad migrate(uint16_t version, std::span<const uint8_t> payload) {
     switch (version) {
         // Add the v2 case here and migrate older decoded data as the model evolves.
         case 1:
+            if (payload.size() != kSettingsPayloadSize) {
+                return {.status = SettingsStatus::Corrupt};
+            }
             return decode_v1(payload);
         default:
             return {.status = SettingsStatus::Corrupt};
@@ -107,16 +113,25 @@ SettingsLoad decode_settings(std::span<const uint8_t> blob) {
     if (blob.empty()) {
         return {};
     }
-    if (blob.size() != kSettingsBlobSize || read_u32(blob, 0) != kMagic ||
-        read_u16(blob, 6) != kSettingsPayloadSize ||
-        read_u32(blob, kCrcOffset) != crc32(blob.first<kCrcOffset>())) {
+    // The blob describes itself (magic, version, payload length, CRC at the end), so any
+    // version's blob can be checked for integrity before its layout is known: a later firmware's
+    // settings read here as UnknownVersion, not Corrupt, and a later firmware can migrate ours.
+    if (blob.size() < kSettingsHeaderSize + kCrcSize || read_u32(blob, 0) != kMagic) {
+        return {.status = SettingsStatus::Corrupt};
+    }
+    const std::size_t payload_size = read_u16(blob, 6);
+    if (blob.size() != kSettingsHeaderSize + payload_size + kCrcSize) {
+        return {.status = SettingsStatus::Corrupt};
+    }
+    const std::size_t crc_offset = kSettingsHeaderSize + payload_size;
+    if (read_u32(blob, crc_offset) != crc32(blob.first(crc_offset))) {
         return {.status = SettingsStatus::Corrupt};
     }
     const uint16_t version = read_u16(blob, 4);
     if (version > kSettingsVersion) {
         return {.status = SettingsStatus::UnknownVersion};
     }
-    return migrate(version, blob.subspan<kSettingsHeaderSize, kSettingsPayloadSize>());
+    return migrate(version, blob.subspan(kSettingsHeaderSize, payload_size));
 }
 
 Settings repair_settings(const Settings& s, uint8_t* repaired_fields) {

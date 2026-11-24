@@ -202,3 +202,33 @@ TEST_CASE("Settings ignore the reserved payload byte") {
     CHECK(result.settings == kNonDefault);
     CHECK(result.repaired_fields == 0);
 }
+
+TEST_CASE("A later version's blob of a different size reads as UnknownVersion, not Corrupt") {
+    // A v2 blob with a 12-byte payload: 8 + 12 + 4 = 24 bytes, CRC at offset 20.
+    std::array<uint8_t, 24> v2{};
+    v2[0] = 'C';
+    v2[1] = 'P';
+    v2[2] = 'S';
+    v2[3] = 'T';
+    v2[4] = 2;   // Version 2, little-endian.
+    v2[6] = 12;  // Payload length 12.
+    const uint32_t crc = core::crc32(std::span{v2}.first(20));
+    for (int i = 0; i < 4; ++i) {
+        v2[static_cast<std::size_t>(20 + i)] = static_cast<uint8_t>(crc >> (8 * i));
+    }
+    const auto load = core::decode_settings(v2);
+    CHECK(load.status == core::SettingsStatus::UnknownVersion);
+    CHECK(load.settings == core::Settings{});
+
+    // The same 24-byte layout claiming version 1 is Corrupt: v1 payloads are exactly 10 bytes.
+    v2[4] = 1;
+    const uint32_t crc1 = core::crc32(std::span{v2}.first(20));
+    for (int i = 0; i < 4; ++i) {
+        v2[static_cast<std::size_t>(20 + i)] = static_cast<uint8_t>(crc1 >> (8 * i));
+    }
+    CHECK(core::decode_settings(v2).status == core::SettingsStatus::Corrupt);
+
+    // Shorter than a header plus a CRC: Corrupt, never an out-of-bounds read.
+    const std::array<uint8_t, 11> tiny{'C', 'P', 'S', 'T', 1, 0, 0, 0, 0, 0, 0};
+    CHECK(core::decode_settings(tiny).status == core::SettingsStatus::Corrupt);
+}
