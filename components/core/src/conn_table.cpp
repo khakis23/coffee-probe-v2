@@ -11,13 +11,13 @@ std::size_t ConnTable::admit(int fd, uint32_t now_ms, int* evicted_fd) {
             slot = i;
             break;
         }
-        // Unsigned elapsed time handles uptime rollover.
-        if (now_ms - conns_[i].opened_ms > now_ms - conns_[slot].opened_ms) {
+        // Admissions since this one; unsigned subtraction survives the counter wrapping.
+        if (next_seq_ - conns_[i].seq > next_seq_ - conns_[slot].seq) {
             slot = i;
         }
     }
     *evicted_fd = conns_[slot].fd;
-    conns_[slot] = {fd, now_ms, now_ms};
+    conns_[slot] = {fd, now_ms, now_ms, next_seq_++};
     return slot;
 }
 

@@ -53,3 +53,19 @@ TEST_CASE("idle time is measured from last receive and released slots are reused
     CHECK(table.at(second).fd == 11);
     CHECK(table.active() == 2);
 }
+
+TEST_CASE("connections admitted in the same millisecond are evicted in admission order") {
+    core::ConnTable table;
+    int evicted = -1;
+    for (int fd = 10; fd < 14; ++fd) {
+        table.admit(fd, 500, &evicted);  // Slots 0..3, admitted in that order, same millisecond.
+    }
+    CHECK(table.admit(20, 500, &evicted) == 0);  // Oldest: fd 10 in slot 0.
+    CHECK(evicted == 10);
+    // Slot 0 now holds the newest connection. The oldest is fd 11 in slot 1, though every
+    // opened_ms is equal and a clock-based tie-break would pick slot 0 again.
+    CHECK(table.admit(21, 500, &evicted) == 1);
+    CHECK(evicted == 11);
+    CHECK(table.admit(22, 500, &evicted) == 2);
+    CHECK(evicted == 12);
+}

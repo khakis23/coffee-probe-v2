@@ -140,10 +140,24 @@ void accept_clients(uint32_t now_ms) {
         const int fd = lwip_accept(listener_fd, nullptr, nullptr);
         if (fd < 0) {
             const int error = errno;
-            if (!would_block(error) && error != EINTR) {
+            // Only these mean the listener itself is broken. Anything else (ECONNABORTED when
+            // lwIP can't allocate for one peer, ENFILE, ENOMEM, ...) concerns that one incoming
+            // connection: Artisan's established link must not pay for it.
+            if (error == EBADF || error == ENOTSOCK || error == EINVAL) {
                 listener_failed(now_ms, "accept failed", error);
+            } else if (!would_block(error) && error != EINTR) {
+                warn(now_ms, "Incoming connection failed", error);
             }
             return;
+        }
+
+        // A peer that connected and reset before we got to it must not evict a live client.
+        int pending_error = 0;
+        socklen_t length = sizeof(pending_error);
+        if (lwip_getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending_error, &length) != 0 ||
+            pending_error != 0) {
+            close_socket(fd, now_ms);
+            continue;
         }
 
         // R4 permits four client sockets outside service(). Accept must succeed before we can
@@ -252,7 +266,8 @@ void service(uint32_t now_ms, uint32_t wait_ms) {
             listener_failed(now_ms, "select failed", error);
             return;
         }
-    } else if (ready > 0) {
+    }
+    if (ready > 0) {
         // Give established clients their response before processing new arrivals.
         for (std::size_t slot = 0; slot < core::kMaxConns; ++slot) {
             const int fd = clients.at(slot).fd;
@@ -260,17 +275,18 @@ void service(uint32_t now_ms, uint32_t wait_ms) {
                 read_client(slot, now_ms);
             }
         }
-        // A broken listener shows up as an accept() error, which restarts it. (No exceptfds:
-        // a spurious exception flag with SO_ERROR 0 would otherwise drop Artisan's link.)
-        if (FD_ISSET(listener_fd, &readable)) {
-            accept_clients(now_ms);
-        }
     }
-
+    // Expire idle clients after reading (a client whose request just arrived is not idle) and
+    // before accepting, so a dead slot is reused instead of evicting a live client like Artisan.
     for (std::size_t slot = 0; slot < core::kMaxConns; ++slot) {
         if (clients.idle_expired(slot, now_ms)) {
             disconnect(slot, now_ms);
         }
+    }
+    // A broken listener shows up as an accept() error, which restarts it. (No exceptfds:
+    // a spurious exception flag with SO_ERROR 0 would otherwise drop Artisan's link.)
+    if (ready > 0 && FD_ISSET(listener_fd, &readable)) {
+        accept_clients(now_ms);
     }
 }
 

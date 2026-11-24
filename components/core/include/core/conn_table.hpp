@@ -13,11 +13,14 @@ struct Conn {
     int fd{-1};
     uint32_t opened_ms{0};
     uint32_t last_rx_ms{0};
+    // Admission order. The clock can't order two connections admitted in the same millisecond.
+    uint32_t seq{0};
 };
 
 class ConnTable {
 public:
-    // Returns the first free slot or replaces the oldest connection. The caller closes evicted_fd.
+    // Returns the first free slot or replaces the oldest (earliest admitted) connection.
+    // The caller closes evicted_fd (-1 when a free slot was used).
     std::size_t admit(int fd, uint32_t now_ms, int* evicted_fd);
     void touch(std::size_t slot, uint32_t now_ms);
     void release(std::size_t slot);
@@ -27,6 +30,7 @@ public:
 
 private:
     std::array<Conn, kMaxConns> conns_{};
+    uint32_t next_seq_{0};
 };
 
 }  // namespace core

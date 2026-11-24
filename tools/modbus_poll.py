@@ -27,12 +27,13 @@ STATUS_BITS = [
 ]
 
 
-def fmt_temp(val: int, unit: str = "") -> str:
-    """Format 16-bit temperature register (x10) or special status."""
+def fmt_temp(val: int, unit: str = "", fault_sentinel: bool = False) -> str:
+    """Format a 16-bit temperature register (x10). Only the BT registers use -10 for a fault;
+    for the others -10 is a real -1.0 reading."""
     if val == 0x8000:
         return "n/a"
     signed = val - 0x10000 if val >= 0x8000 else val
-    if signed == -10:
+    if fault_sentinel and signed == -10:
         return "FAULT"
     suffix = f" {unit}" if unit else ""
     return f"{signed / 10.0:.1f}{suffix}"
@@ -95,8 +96,8 @@ def main() -> None:
                         client.close()
                     else:
                         regs = result.registers
-                        bt_f = fmt_temp(regs[0], "F")
-                        bt_c = fmt_temp(regs[1], "C")
+                        bt_f = fmt_temp(regs[0], "F", fault_sentinel=True)
+                        bt_c = fmt_temp(regs[1], "C", fault_sentinel=True)
                         cj = fmt_temp(regs[4], "C")
                         status_str = format_status(regs[2])
                         uptime = (regs[6] << 16) | regs[7]
