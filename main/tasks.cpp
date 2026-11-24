@@ -124,13 +124,11 @@ void net_step() {
     if (publish_lateness_ms <= INT32_MAX) {
         next_publish_ms = now_ms + kPublishPeriodMs - publish_lateness_ms % kPublishPeriodMs;
         core::ProbeState snapshot;
-        if (state::snapshot(snapshot)) {
-            // The sensor may have stopped updating before its watchdog can reboot the probe.
-            const auto snapshot_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
-            snapshot.stale |= snapshot_ms - snapshot.bt_updated_ms > core::kStaleMs;
-        }
-        // A state lock timeout leaves the default fault/stale snapshot in place.
-        net::modbus::publish(core::build_registers(snapshot, firmware_version));
+        // A state lock timeout leaves the default fault/stale snapshot in place: Artisan sees -1
+        // rather than a held value. build_registers re-checks the reading's age itself.
+        (void)state::snapshot(snapshot);
+        const auto snapshot_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+        net::modbus::publish(core::build_registers(snapshot, snapshot_ms, firmware_version));
     }
 
     net::modbus::service(now_ms, 0);

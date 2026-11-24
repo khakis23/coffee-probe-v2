@@ -19,14 +19,14 @@ uint16_t read_version_part(const char*& version) {
 
 }  // namespace
 
-RegisterBlock build_registers(const ProbeState& state, uint16_t firmware_version) {
+RegisterBlock build_registers(const ProbeState& state, uint32_t now_ms, uint16_t firmware_version) {
     RegisterBlock block;
     auto& regs = block.regs;
-    const bool valid = bt_valid(state);
+    const bool valid = bt_valid(state, now_ms);
     regs[reg::kBtF10] = to_reg(valid ? to_f(state.bt).v : kFaultValue);
     regs[reg::kBtC10] = to_reg(valid ? state.bt.v : kFaultValue);
 
-    uint16_t status = state.stale ? kStale : 0;
+    uint16_t status = bt_stale(state, now_ms) ? kStale : 0;
     switch (state.fault) {
         case TcFault::None:
             break;

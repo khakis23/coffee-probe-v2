@@ -10,7 +10,7 @@ TEST_CASE("register publication maps a valid reading and system fields") {
     state.cold_junction = core::DeciC{-15};
     state.uptime_s = 0x00012345;
 
-    const auto regs = core::build_registers(state, 0x0102).regs;
+    const auto regs = core::build_registers(state, 0, 0x0102).regs;
     // 100 * 9/5 + 32 = 212 F. Cold junction is -1.5 C, or -15 in tenths.
     CHECK(regs[core::reg::kBtF10] == 2120);
     CHECK(regs[core::reg::kBtC10] == 1000);
@@ -37,7 +37,7 @@ TEST_CASE("each probe fault publishes raw minus ten and its status bit") {
         state.bt = {1000};
         state.fault = fault;
         state.stale = false;
-        const auto regs = core::build_registers(state, 0).regs;
+        const auto regs = core::build_registers(state, 0, 0).regs;
         CHECK(regs[core::reg::kBtC10] == 0xFFF6);
         CHECK(regs[core::reg::kBtF10] == 0xFFF6);
         CHECK(regs[core::reg::kStatus] == status);
@@ -49,14 +49,30 @@ TEST_CASE("stale data publishes the fault value even with no probe fault") {
     state.bt = {1000};
     state.fault = core::TcFault::None;
     state.stale = true;
-    const auto regs = core::build_registers(state, 0).regs;
+    const auto regs = core::build_registers(state, 0, 0).regs;
     CHECK(regs[core::reg::kBtC10] == 0xFFF6);
     CHECK(regs[core::reg::kBtF10] == 0xFFF6);
     CHECK(regs[core::reg::kStatus] == 0x04);  // Stale is bit 2.
     CHECK(regs[core::reg::kColdJunctionC10] == 0x8000);
 
     state.fault = core::TcFault::Open;
-    CHECK(core::build_registers(state, 0).regs[core::reg::kStatus] == 0x05);
+    CHECK(core::build_registers(state, 0, 0).regs[core::reg::kStatus] == 0x05);
+}
+
+TEST_CASE("an old reading publishes the fault value even if the state still says fresh") {
+    // The sensor task froze after a good reading at 1000 ms: stale was never set.
+    core::ProbeState state;
+    state.bt = {1000};
+    state.fault = core::TcFault::None;
+    state.stale = false;
+    state.bt_updated_ms = 1000;
+    // 3000 - 1000 = 2000 ms: exactly the limit, still valid.
+    CHECK(core::build_registers(state, 3000, 0).regs[core::reg::kBtC10] == 1000);
+    // 3001 - 1000 = 2001 ms: stale. -10 raw is 0xFFF6, status bit 2 is stale.
+    const auto regs = core::build_registers(state, 3001, 0).regs;
+    CHECK(regs[core::reg::kBtC10] == 0xFFF6);
+    CHECK(regs[core::reg::kBtF10] == 0xFFF6);
+    CHECK(regs[core::reg::kStatus] == 0x04);
 }
 
 TEST_CASE("firmware version packs decimal major and minor into separate bytes") {

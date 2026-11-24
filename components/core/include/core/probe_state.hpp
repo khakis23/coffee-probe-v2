@@ -25,9 +25,17 @@ struct ProbeState {
 
 inline constexpr uint32_t kStaleMs = 2000;
 
-// True when bt can be shown to the user / sent to Artisan as a real temperature.
-constexpr bool bt_valid(const ProbeState& s) {
-    return s.fault == TcFault::None && !s.stale;
+// True when the reading is older than kStaleMs at now_ms, whatever s.stale says: only the sensor
+// task refreshes s.stale, so a frozen sensor task must not leave an old reading looking fresh.
+// Unsigned subtraction handles the millisecond clock wrapping.
+constexpr bool bt_stale(const ProbeState& s, uint32_t now_ms) {
+    return s.stale || now_ms - s.bt_updated_ms > kStaleMs;
+}
+
+// True when bt can be shown to the user / sent to Artisan as a real temperature at now_ms.
+// Takes the time so no consumer can forget the age check (reliability R1).
+constexpr bool bt_valid(const ProbeState& s, uint32_t now_ms) {
+    return s.fault == TcFault::None && !bt_stale(s, now_ms);
 }
 
 }  // namespace core
