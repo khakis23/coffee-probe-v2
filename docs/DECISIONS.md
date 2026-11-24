@@ -94,3 +94,12 @@ dispatch. `scripts/ci-local.sh` on the Mac decides whether a PR can merge; agent
   added latency is nothing next to Artisan's 1–3 s polling.
 - **Bounded work per round:** clients are served before new connections are accepted, at most 2
   accepts per round, one `recv()` per client.
+
+## D-011 · 2026-11-24 · OLED driver uses i2c_master directly, not esp_lcd (Claude)
+
+The architecture planned `esp_lcd` panel I/O over `i2c_master`. The display component instead talks to the
+panel with `i2c_master` directly, in page mode for both SSD1306 and SH1106: about 200 lines, the same
+approach the bringup diagnostics already proved on both IDF versions, and full control over timeouts,
+bus reset and re-init (R2/R3). IDF ships an `esp_lcd` panel driver only for the SSD1306 (the SH1106 would
+need an extra managed component, a new dependency), and the framebuffer and fonts are ours anyway, so
+`esp_lcd` would add a layer without removing any code.
