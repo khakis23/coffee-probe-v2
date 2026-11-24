@@ -156,9 +156,14 @@ void accept_clients(uint32_t now_ms) {
         int pending_error = 0;
         socklen_t length = sizeof(pending_error);
         uint8_t peek_byte = 0;
-        if (lwip_getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending_error, &length) != 0 ||
-            pending_error != 0 ||
-            lwip_recv(fd, &peek_byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0) {
+        bool peer_gone = lwip_getsockopt(fd, SOL_SOCKET, SO_ERROR, &pending_error, &length) != 0 ||
+                         pending_error != 0;
+        if (!peer_gone) {
+            // 0 = EOF queued; -1 with anything but "no data yet" = reset or other error.
+            const auto peeked = lwip_recv(fd, &peek_byte, 1, MSG_PEEK | MSG_DONTWAIT);
+            peer_gone = peeked == 0 || (peeked < 0 && !would_block(errno));
+        }
+        if (peer_gone) {
             close_socket(fd, now_ms);
             continue;
         }
@@ -203,6 +208,13 @@ void read_client(std::size_t slot, uint32_t now_ms) {
     buffer.filled += static_cast<std::size_t>(received);
     while (const auto frame_size =
                core::modbus::frame_length(std::span(buffer.bytes).first(buffer.filled))) {
+        // A length no Modbus TCP frame can have (more than the buffer holds) would never
+        // complete; without this the client would hang until ~20 more polls filled the buffer.
+        if (*frame_size > buffer.bytes.size()) {
+            warn(now_ms, "Impossible Modbus frame length");
+            disconnect(slot, now_ms);
+            return;
+        }
         if (*frame_size > buffer.filled) {
             break;
         }
