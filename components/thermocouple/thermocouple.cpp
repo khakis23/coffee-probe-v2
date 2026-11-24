@@ -5,6 +5,8 @@
 #include "board/board.hpp"
 #include "driver/spi_master.h"
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
@@ -15,18 +17,29 @@ namespace {
 constexpr const char* kTag = "thermocouple";
 constexpr int kSpiHz = 4'000'000;  // Below the MAX6675's 4.3 MHz limit.
 // A frame takes about 8 us at 4 MHz. A tick-based wait can end up to one tick early, and
-// Wi-Fi interrupts can delay the task, so the result wait is generous; both waits together
-// (at most ~70 ms) still fit well inside the 250 ms sample period.
+// Wi-Fi interrupts can delay the task, so the result wait is generous. Waits per read: at most
+// ~70 ms of SPI plus the read-interval wait below, which only runs after a late read.
 constexpr TickType_t kQueueWait = pdMS_TO_TICKS(20);
 constexpr TickType_t kResultWait = pdMS_TO_TICKS(50);
 constexpr TickType_t kRetryInterval = pdMS_TO_TICKS(5000);
 constexpr TickType_t kWarnInterval = pdMS_TO_TICKS(10000);
 constexpr core::TcReading kBusError{{0}, std::nullopt, core::TcFault::BusError};
 
+// A transfer that never completes cannot be cancelled or removed from the driver, so the
+// sensor would report BusError forever. After this long, restart (reliability R3: a hang
+// means a reboot). The probe is useless without readings, so a restart costs nothing extra.
+constexpr int64_t kStuckRestartUs = 5'000'000;
+
+// Pulling CS low aborts a conversion in progress, so consecutive reads must be at least one
+// worst-case conversion apart (datasheets: MAX6675 0.22 s, MAX31855 0.1 s), plus 10 ms margin.
+// The sensor task's 250 ms period normally guarantees this; a late read followed by an
+// on-time one does not, so the driver enforces it.
 #if CONFIG_PROBE_TC_MAX6675
 constexpr int kFrameBits = 16;
+constexpr int64_t kMinReadIntervalUs = 230'000;
 #else
 constexpr int kFrameBits = 32;
+constexpr int64_t kMinReadIntervalUs = 110'000;
 constexpr bool kGroundedProbe =
 #if CONFIG_PROBE_TC_GROUNDED
     true;
@@ -39,6 +52,9 @@ constexpr bool kGroundedProbe =
 // and its inline RX buffer after a result timeout.
 spi_transaction_t transaction{};
 bool in_flight = false;
+int64_t in_flight_since_us = 0;
+int64_t last_frame_us = 0;  // When the last transfer ended (CS high: a conversion starts).
+bool have_frame = false;
 bool bus_ready = false;
 spi_device_handle_t device = nullptr;
 TickType_t last_init_attempt = 0;
@@ -104,9 +120,21 @@ core::TcReading read() {
         // Drain without waiting so the new queue and result calls keep their full time budget.
         const esp_err_t error = spi_device_get_trans_result(device, &completed, 0);
         if (error != ESP_OK) {
+            if (esp_timer_get_time() - in_flight_since_us >= kStuckRestartUs) {
+                ESP_LOGE(kTag, "SPI transfer stuck for 5 s, restarting");
+                esp_restart();
+            }
             return spi_error("previous SPI transaction pending", error);
         }
         in_flight = false;
+    }
+
+    if (have_frame) {
+        const int64_t remaining_us = kMinReadIntervalUs - (esp_timer_get_time() - last_frame_us);
+        if (remaining_us > 0) {
+            // A tick delay can end up to one tick early, so add one. At most ~240 ms.
+            vTaskDelay(pdMS_TO_TICKS(remaining_us / 1000) + 1);
+        }
     }
 
     transaction = {};
@@ -118,11 +146,14 @@ core::TcReading read() {
         return spi_error("SPI queue", error);
     }
     in_flight = true;
+    in_flight_since_us = esp_timer_get_time();
     error = spi_device_get_trans_result(device, &completed, kResultWait);
     if (error != ESP_OK) {
         return spi_error("SPI result", error);
     }
     in_flight = false;
+    last_frame_us = esp_timer_get_time();
+    have_frame = true;
 
     // The most significant byte arrives first on both converters.
     const auto& rx = completed->rx_data;

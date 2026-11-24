@@ -42,6 +42,11 @@ TcReading decode_max31855(uint32_t frame, bool grounded_probe) {
     }
 
     const DeciC hot = from_quarter_c(detail::sign_extend<14>(frame >> 18));
+    // Outside the K-type range (-270 to +1372 C) the frame cannot be a real reading: a flipped
+    // sign bit turns 200 C into -1848 C with every check above still passing.
+    if (hot.v < -2700 || hot.v > 13720) {
+        return kBusError;
+    }
     return {hot, cold_junction, TcFault::None};
 }
 

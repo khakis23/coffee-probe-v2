@@ -10,7 +10,7 @@ TEST_CASE("MAX6675 decodes unsigned quarter degrees and ignores D0") {
         uint16_t frame;
         DeciC hot;
     } vectors[]{
-        {0x0000, {0}},      // Digitization: all temperature bits low gives 0 C.
+        {0x0001, {0}},      // Digitization: all temperature bits low gives 0 C (D0 high).
         {0x0008, {3}},      // Figure 2: D3 is the LSB, yielding 0.25 C.
         {0x0320, {250}},    // Figure 2: 100 counts in D14..D3 gives 25 C.
         {0x0321, {250}},    // Figure 2: same 25 C with the three-state D0 high.
@@ -38,6 +38,7 @@ TEST_CASE("MAX6675 reports an open probe without either temperature") {
 
 TEST_CASE("MAX6675 rejects invalid bus frames before checking for an open probe") {
     constexpr uint16_t frames[]{
+        0x0000,  // Project bus check: all bits low (data line stuck low).
         0xFFFF,  // Project bus check: all bits high.
         0x8320,  // MAX6675 Figure 2: dummy D15 must read low.
         0x0322,  // Figure 2: device ID D1 must read low.
