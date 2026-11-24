@@ -119,6 +119,18 @@ TEST_CASE("Screen choice: temperature whenever it is trustworthy, never a stale 
     boot.now_ms = 3'000;
     CHECK(ui::choose_screen(boot) == ui::Screen::Probe);
 
+    // Unplugged after a first reading, still inside the first 3 s: PROBE? at once, not Starting.
+    auto early_unplug = live(1000);
+    early_unplug.state.bt_updated_ms = 1'200;
+    early_unplug.state.fault = TcFault::Open;
+    early_unplug.now_ms = 1'950;
+    CHECK(ui::choose_screen(early_unplug) == ui::Screen::Probe);
+    // A real fault before any reading also shows PROBE? at once.
+    ui::Inputs open_at_boot;
+    open_at_boot.state.fault = TcFault::Open;
+    open_at_boot.now_ms = 1'000;
+    CHECK(ui::choose_screen(open_at_boot) == ui::Screen::Probe);
+
     // A valid reading wins even during start-up.
     auto early = live(1000);
     early.state.bt_updated_ms = 800;
@@ -178,6 +190,8 @@ TEST_CASE("Live screen shows whole degrees F, right-aligned") {
     CHECK(read_number(draw(live(183))) == " 65");
     CHECK(read_number(draw(live(3400))) == "644");
     CHECK(read_number(draw(live(433))) == "110");
+    // Rounded once: 203.6 C = 398.48 F -> 398 (rounding to tenths first would give 398.5 -> 399).
+    CHECK(read_number(draw(live(2036))) == "398");
     // 25.6 C = 78.08 F -> 78; 31.7 C = 89.06 F -> 89; 36.7 C = 98.06 -> 98; 15 C = 59 F.
     CHECK(read_number(draw(live(256))) == " 78");
     CHECK(read_number(draw(live(317))) == " 89");

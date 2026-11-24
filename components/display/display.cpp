@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "board/board.hpp"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -37,7 +38,7 @@ constexpr uint8_t kColumnStart = 0;
 // off for the periodic refresh would make the screen blink every 30 s.
 constexpr uint8_t kPanelOff[] = {kCommand, 0xAE};
 
-// Leaves the panel on (0xAF last) and is safe to resend at any time.
+// Safe to resend at any time; leaves the on/off state alone (0xAF is sent separately).
 constexpr uint8_t kPanelSetup[] = {
     kCommand,
     0xD5, 0x80,  // Clock divide ratio / oscillator frequency.
@@ -58,8 +59,8 @@ constexpr uint8_t kPanelSetup[] = {
     0xDB, 0x40,  // VCOMH deselect level.
     0xA4,        // Display follows RAM.
     0xA6,        // Normal polarity.
-    0xAF,        // Panel on.
 };
+constexpr uint8_t kPanelOn[] = {kCommand, 0xAF};
 
 // The UI task owns these handles and buffers. No other task waits on this bus.
 i2c_master_bus_handle_t bus = nullptr;
@@ -69,6 +70,9 @@ std::array<bool, core::Framebuffer::kPages> dirty{};
 std::array<uint8_t, 4> page_address{kCommand, 0, kColumnStart & 0x0F, 0x10 | (kColumnStart >> 4)};
 std::array<uint8_t, core::Framebuffer::kWidth + 1> page_data{kData};
 bool panel_ready = false;
+// After a first start or an error the panel stays off until a whole frame has been redrawn, so a
+// number left in its RAM from before the error never flashes back as if it were current.
+bool panel_on_pending = true;
 bool init_failed = false;
 bool transfer_ok = false;
 bool recovering = false;
@@ -76,24 +80,52 @@ bool warned = false;
 uint32_t last_init_ms = 0;
 uint32_t last_warning_ms = 0;
 
-void record_error(const char* operation, esp_err_t error) {
-    dirty.fill(true);
-    panel_ready = false;
-    transfer_ok = false;
-    recovering = true;
+// An idle I2C bus has SCL high. If something holds it low, IDF v5.3.1's bus clear on the C3
+// waits for the hardware with no timeout (i2c_ll_master_clr_bus) and would hang this task until
+// the watchdog restarts the probe, taking Artisan's link down with it. So never hand the driver
+// a bus whose clock line is stuck: check it first, and retry later. IDF v6 bounds that wait.
+bool scl_idle_high() {
+    const auto scl = board::kBoard.pins.i2c_scl;
+    for (int sample = 0; sample < 3; ++sample) {
+        if (gpio_get_level(scl) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
 
-    const esp_err_t reset_error = bus != nullptr ? i2c_master_bus_reset(bus) : ESP_OK;
+void warn(const char* message, esp_err_t error) {
     const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     if (!warned || now_ms - last_warning_ms >= kWarnMs) {
-        if (reset_error == ESP_OK) {
-            ESP_LOGW(kTag, "%s: %s", operation, esp_err_to_name(error));
-        } else {
-            ESP_LOGW(kTag, "%s: %s (bus reset: %s)", operation, esp_err_to_name(error),
-                     esp_err_to_name(reset_error));
-        }
+        ESP_LOGW(kTag, "%s: %s", message, esp_err_to_name(error));
         last_warning_ms = now_ms;
         warned = true;
     }
+}
+
+// Everything is unknown after a failure: redraw every page, keep the panel off until then.
+void mark_failed() {
+    dirty.fill(true);
+    panel_ready = false;
+    panel_on_pending = true;
+    transfer_ok = false;
+    recovering = true;
+}
+
+void record_error(const char* operation, esp_err_t error) {
+    mark_failed();
+    // Re-probe the address on recovery: a replaced module may answer at the other one.
+    if (device != nullptr && i2c_master_bus_rm_device(device) == ESP_OK) {
+        device = nullptr;
+    }
+    // The explicit bus reset runs the same bus clear, so it gets the same stuck-clock guard.
+    if (bus != nullptr && scl_idle_high()) {
+        const esp_err_t reset_error = i2c_master_bus_reset(bus);
+        if (reset_error != ESP_OK) {
+            warn("display bus reset failed", reset_error);
+        }
+    }
+    warn(operation, error);
 }
 
 esp_err_t ensure_device() {
@@ -140,12 +172,22 @@ esp_err_t init() {
     last_init_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     // panel_ready is true only for the periodic refresh of a panel that is working.
     const bool refresh = panel_ready;
+    if (bus != nullptr && !scl_idle_high()) {
+        init_failed = true;
+        mark_failed();
+        warn("display I2C clock line held low, not touching the bus", ESP_ERR_INVALID_STATE);
+        return ESP_ERR_INVALID_STATE;
+    }
     esp_err_t error = ensure_device();
     if (error == ESP_OK && !refresh) {
         error = i2c_master_transmit(device, kPanelOff, sizeof(kPanelOff), kI2cTimeoutMs);
     }
     if (error == ESP_OK) {
         error = i2c_master_transmit(device, kPanelSetup, sizeof(kPanelSetup), kI2cTimeoutMs);
+    }
+    if (error == ESP_OK && refresh) {
+        // A panel reset by ESD comes back switched off; the full redraw below refills its RAM.
+        error = i2c_master_transmit(device, kPanelOn, sizeof(kPanelOn), kI2cTimeoutMs);
     }
     init_failed = error != ESP_OK;
     if (init_failed) {
@@ -167,6 +209,14 @@ void show(const core::Framebuffer& frame, uint32_t now_ms) {
         if (init() != ESP_OK) {
             return;
         }
+    }
+    if (!scl_idle_high()) {
+        // Retry through init() in kRetryMs; see scl_idle_high() for why the driver isn't called.
+        init_failed = true;
+        last_init_ms = now_ms;
+        mark_failed();
+        warn("display I2C clock line held low, not touching the bus", ESP_ERR_INVALID_STATE);
+        return;
     }
 
     for (int page = 0; page < core::Framebuffer::kPages; ++page) {
@@ -199,6 +249,16 @@ void show(const core::Framebuffer& frame, uint32_t now_ms) {
         transfer_ok = true;
     }
 
+    if (panel_on_pending) {
+        // Only once every page holds the current frame (the loop returned early otherwise).
+        const esp_err_t error =
+            i2c_master_transmit(device, kPanelOn, sizeof(kPanelOn), kI2cTimeoutMs);
+        if (error != ESP_OK) {
+            record_error("display switch-on failed", error);
+            return;
+        }
+        panel_on_pending = false;
+    }
     if (recovering) {
         ESP_LOGI(kTag, "display recovered");
         recovering = false;

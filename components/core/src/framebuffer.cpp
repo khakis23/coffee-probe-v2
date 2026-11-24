@@ -30,10 +30,11 @@ bool Framebuffer::pixel(int x, int y) const {
 
 void Framebuffer::fill_rect(int x, int y, int w, int h, bool on) {
     // Clip first so a huge or negative rectangle costs only the visible pixels.
+    // 64-bit edges: x + w must not overflow int before it is clipped.
     const int x0 = std::max(x, 0);
     const int y0 = std::max(y, 0);
-    const int x1 = std::min(x + w, kWidth);
-    const int y1 = std::min(y + h, kHeight);
+    const int x1 = static_cast<int>(std::min<int64_t>(int64_t{x} + w, kWidth));
+    const int y1 = static_cast<int>(std::min<int64_t>(int64_t{y} + h, kHeight));
     for (int py = y0; py < y1; ++py) {
         for (int px = x0; px < x1; ++px) {
             set_pixel(px, py, on);

@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <climits>
+
 #include "core/font5x7.hpp"
 #include "core/framebuffer.hpp"
 
@@ -45,6 +47,12 @@ TEST_CASE("Framebuffer clips everything outside 128x64") {
         }
     }
     CHECK(lit == 6);
+    // Huge sizes clip without overflowing: the same 6 pixels (126..127 x 61..63).
+    Framebuffer huge;
+    huge.fill_rect(126, 61, INT_MAX, INT_MAX);
+    Framebuffer corner;
+    corner.fill_rect(126, 61, 2, 3);
+    CHECK(huge == corner);
     fb.clear();
     CHECK(fb == empty);
 }

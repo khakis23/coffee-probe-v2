@@ -71,14 +71,13 @@ void draw_segments(Fb& fb, int x, int y, uint8_t mask) {
     if (mask & 0x40) fb.fill_rect(x, y + half - kSegT / 2, kDigitW, kSegT);               // g
 }
 
-// Whole degrees, rounded half away from zero (212.5 F shows 213), as staff expect.
-int whole_degrees(DeciF f) {
-    const int v = f.v;
-    return v >= 0 ? (v + 5) / 10 : -((-v + 5) / 10);
-}
+// Whole degrees F straight from tenths of C, rounded once, half away from zero.
+// Going through to_f() first would round twice: 203.6 C = 398.48 F -> 398.5 -> 399 (wrong).
+// F = C * 9 / 5 + 32, so with c in tenths: F = (9c + 1600) / 50.
+int whole_degrees_f(DeciC c) { return div_round_away(9 * static_cast<int32_t>(c.v) + 1600, 50); }
 
 void draw_live(const Inputs& in, Fb& fb) {
-    const int degrees = whole_degrees(to_f(in.state.bt));
+    const int degrees = whole_degrees_f(in.state.bt);
     // Unit: a small degree ring and an F at scale 2, right of the digits.
     constexpr int kUnitW = 6 + 2 + Fb::kGlyphWidth * 2;
     constexpr int kTotalW = kSlots * kDigitW + (kSlots - 1) * kDigitGap + kDigitGap + kUnitW;
@@ -174,7 +173,10 @@ Screen choose_screen(const Inputs& in) {
         return Screen::Live;
     }
     // The first good reading needs three agreeing samples (~0.75 s); don't cry PROBE? before.
-    if (in.now_ms < kStartupMs) {
+    // Only while there has never been a reading and the fault is the initial "no reading yet"
+    // (BusError): a probe unplugged after a first reading, or a real fault, shows PROBE? at once.
+    const bool never_read = in.state.bt_updated_ms == 0;
+    if (in.now_ms < kStartupMs && never_read && in.state.fault == TcFault::BusError) {
         return Screen::Starting;
     }
     return Screen::Probe;

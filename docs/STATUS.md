@@ -69,6 +69,10 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
    - #18–#20: which panel it is (set the Kconfig controller if SH1106), the screens look like the host
      previews, text and digits readable from ~2 m, SDA pulled to GND for 1 s → the screen recovers;
      if the panel module has no pull-ups, 400 kHz may fail (drop `kI2cHz` to 100 kHz)
+   - **Flash with `--idf v6.0.3` if v6 works on the board** (the project's target, #2): IDF v5.3.1's I2C
+     bus clear on the C3 can wait forever if the clock line jams mid-transfer, and the watchdog would then
+     restart the probe. The display checks the line before using the bus, which covers most cases
+     but not a jam in the middle of a transfer. v6 bounds that wait.
    - stack high-water marks ≥ 25 % free
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).

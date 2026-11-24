@@ -97,6 +97,10 @@ A one-line top bar on every screen: "Artisan connected" (a Modbus client asked w
 Artisan" (a device joined the Wi-Fi), or, with nobody connected, "Join CoffeeProbe-XXXX" alternating with
 "Password: coffeeprobe" every 3 s. Overheat, Diagnostics and burn-in protection come after the MVP.
 
+Known limit: if the OLED's I2C bus dies, the panel keeps showing whatever it last received (nothing can
+blank it without the bus). Artisan is unaffected. After any bus error the panel is switched off and only
+switched on again once a whole current frame has been written, so an old number never flashes back.
+
 ## Reliability design
 
 Failure mode → how we handle it:
