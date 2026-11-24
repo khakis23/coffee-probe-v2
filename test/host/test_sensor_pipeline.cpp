@@ -174,10 +174,11 @@ TEST_CASE("Sensor pipeline never publishes a connector-bounce spike on replug") 
     pipeline.feed({{2000}, std::nullopt, TcFault::None}, 1000);
     CHECK(pipeline.output(1000).fault == TcFault::Open);
     pipeline.feed({{2010}, std::nullopt, TcFault::None}, 1250);
-    // [8500, 2000, 2010] spreads 6500 > 50: the samples do not agree, nothing is published.
+    // [8500, 2000, 2010] over 500 ms: allowed spread max(50, 500 * 500 / 1000) = 250, and
+    // 6500 > 250, so the samples do not agree and nothing is published.
     CHECK(pipeline.output(1250).fault == TcFault::Open);
     pipeline.feed({{2005}, std::nullopt, TcFault::None}, 1500);
-    // The window slides: [2005, 2000, 2010] spreads 10 <= 50, median 2005.
+    // The window slides: [2005, 2000, 2010] spreads 10 <= 250, median 2005.
     CHECK(pipeline.output(1500).fault == TcFault::None);
     CHECK(pipeline.output(1500).bt == DeciC{2005});
 }
@@ -272,4 +273,39 @@ TEST_CASE("Sensor pipeline fault count saturates and still reports the latest fa
     pipeline.feed({{0}, std::nullopt, TcFault::BusError}, 256 * 250);
     // The 256th fault keeps the counter at 255 and updates the reported cause.
     CHECK(pipeline.output(256 * 250).fault == TcFault::BusError);
+}
+
+TEST_CASE("Sensor pipeline recovers during a fast real change but not from a disagreeing window") {
+    SensorPipeline pipeline{{}};
+    for (uint32_t t = 0; t < 750; t += 250) {
+        pipeline.feed({{0}, std::nullopt, TcFault::Open}, t);
+    }
+    // Replugged while the beans cool at 12 C/s: 200, 197, 194 C at 250 ms steps. Spread 60
+    // tenths over 500 ms; allowed max(50, 500 * 500 / 1000) = 250. Publishes the median, 1970.
+    pipeline.feed({{2000}, std::nullopt, TcFault::None}, 750);
+    pipeline.feed({{1970}, std::nullopt, TcFault::None}, 1000);
+    pipeline.feed({{1940}, std::nullopt, TcFault::None}, 1250);
+    CHECK(pipeline.output(1250).fault == TcFault::None);
+    CHECK(pipeline.output(1250).bt == DeciC{1970});
+
+    SensorPipeline too_wide{{}};
+    for (uint32_t t = 0; t < 750; t += 250) {
+        too_wide.feed({{0}, std::nullopt, TcFault::Open}, t);
+    }
+    // Spread 2251 - 2000 = 251 over 500 ms is just above the allowed 250.
+    too_wide.feed({{2000}, std::nullopt, TcFault::None}, 750);
+    too_wide.feed({{2251}, std::nullopt, TcFault::None}, 1000);
+    too_wide.feed({{2100}, std::nullopt, TcFault::None}, 1250);
+    CHECK(too_wide.output(1250).fault == TcFault::Open);
+
+    SensorPipeline same_time{{}};
+    // Three samples at the same millisecond: the span allows 0, so the 50-tenth floor applies.
+    same_time.feed({{1000}, std::nullopt, TcFault::None}, 0);
+    same_time.feed({{1051}, std::nullopt, TcFault::None}, 0);
+    same_time.feed({{1020}, std::nullopt, TcFault::None}, 0);
+    CHECK(same_time.output(0).fault == TcFault::BusError);  // 51 > 50.
+    same_time.feed({{1050}, std::nullopt, TcFault::None}, 0);
+    // [1050, 1051, 1020]: spread 31 <= 50, median 1050.
+    CHECK(same_time.output(0).fault == TcFault::None);
+    CHECK(same_time.output(0).bt == DeciC{1050});
 }

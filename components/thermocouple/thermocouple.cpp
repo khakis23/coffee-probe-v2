@@ -26,8 +26,8 @@ constexpr TickType_t kWarnInterval = pdMS_TO_TICKS(10000);
 constexpr core::TcReading kBusError{{0}, std::nullopt, core::TcFault::BusError};
 
 // A transfer that never completes cannot be cancelled or removed from the driver, so the
-// sensor would report BusError forever. After this long, restart (reliability R3: a hang
-// means a reboot). The probe is useless without readings, so a restart costs nothing extra.
+// sensor would report BusError forever. After this long it is a hang, and R3 turns a hang into
+// panic -> coredump -> reboot (esp_system_abort, not esp_restart, so the crash is recorded).
 constexpr int64_t kStuckRestartUs = 5'000'000;
 
 // Pulling CS low aborts a conversion in progress, so consecutive reads must be at least one
@@ -121,12 +121,15 @@ core::TcReading read() {
         const esp_err_t error = spi_device_get_trans_result(device, &completed, 0);
         if (error != ESP_OK) {
             if (esp_timer_get_time() - in_flight_since_us >= kStuckRestartUs) {
-                ESP_LOGE(kTag, "SPI transfer stuck for 5 s, restarting");
-                esp_restart();
+                esp_system_abort("thermocouple SPI transfer stuck for 5 s");
             }
             return spi_error("previous SPI transaction pending", error);
         }
         in_flight = false;
+        // It completed some time before now (CS went high, a conversion started). Counting from
+        // now is conservative: the read below waits a full conversion time.
+        last_frame_us = esp_timer_get_time();
+        have_frame = true;
     }
 
     if (have_frame) {

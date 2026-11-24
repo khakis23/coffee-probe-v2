@@ -51,6 +51,7 @@ void SensorPipeline::feed(const TcReading& reading, uint32_t now_ms) {
     last_good_ms_ = now_ms;
     window_[next_sample_] = {
         clamp_i16(static_cast<int32_t>(reading.hot.v) + config_.calibration_offset.v)};
+    window_ms_[next_sample_] = now_ms;
     next_sample_ = (next_sample_ + 1) % window_.size();
     window_size_ = std::min(window_size_ + 1, window_.size());
     if (window_size_ < window_.size()) {
@@ -69,11 +70,20 @@ void SensorPipeline::feed(const TcReading& reading, uint32_t now_ms) {
         const int64_t previous = latest_.bt.v;
         target =
             static_cast<int32_t>(std::clamp<int64_t>(target, previous - step, previous + step));
-    } else if (max - min > config_.recovery_spread) {
+    } else {
         // At boot, after a fault or after a stale gap: publish only when three consecutive
-        // samples agree, so connector bounce never reaches Artisan. No rate limit here: the old
-        // value says nothing about the probe now. The window slides until the samples agree.
-        return;
+        // samples agree, so connector bounce never reaches Artisan. "Agree" means a spread a real
+        // probe could produce: at most the max rate over the samples' time span (the same
+        // physical limit the live filter uses), and never less than the noise floor. No rate
+        // limit against the old value: it says nothing about the probe now. The window slides
+        // until the samples agree. next_sample_ now indexes the oldest sample.
+        const uint32_t span_ms = now_ms - window_ms_[next_sample_];
+        const int64_t allowed = std::max<int64_t>(
+            config_.recovery_spread,
+            static_cast<int64_t>(config_.max_rate_deci_c_per_s) * span_ms / 1000);
+        if (max - min > allowed) {
+            return;
+        }
     }
 
     has_good_sample_ = true;

@@ -9,8 +9,8 @@ namespace thermocouple {
 esp_err_t init();
 
 // Reads one frame. SPI errors return BusError, with at most ~70 ms of SPI waits. Waits first
-// if the previous read was less than one conversion time ago. Restarts the chip if a transfer
-// has been stuck for 5 s.
+// if the previous read was less than one conversion time ago. Panics (coredump, reboot) if a
+// transfer has been stuck for 5 s: reliability R3.
 core::TcReading read();
 
 const char* chip_name();
