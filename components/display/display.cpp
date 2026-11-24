@@ -94,6 +94,15 @@ bool scl_idle_high() {
     return true;
 }
 
+// Every transfer goes through here, so the stuck-clock check runs right before each one. A jam
+// that starts in the middle of a transfer can still reach IDF's bus clear on v5.3.1; v6 bounds it.
+esp_err_t transmit(const uint8_t* data, std::size_t size) {
+    if (!scl_idle_high()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return i2c_master_transmit(device, data, size, kI2cTimeoutMs);
+}
+
 void warn(const char* message, esp_err_t error) {
     const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     if (!warned || now_ms - last_warning_ms >= kWarnMs) {
@@ -150,6 +159,9 @@ esp_err_t ensure_device() {
     }
 
     for (const uint16_t address : kAddresses) {
+        if (!scl_idle_high()) {
+            return ESP_ERR_INVALID_STATE;  // See transmit().
+        }
         const esp_err_t error = i2c_master_probe(bus, address, kI2cTimeoutMs);
         if (error == ESP_ERR_NOT_FOUND) {
             continue;  // A NACK is expected when the module uses the other address.
@@ -180,14 +192,10 @@ esp_err_t init() {
     }
     esp_err_t error = ensure_device();
     if (error == ESP_OK && !refresh) {
-        error = i2c_master_transmit(device, kPanelOff, sizeof(kPanelOff), kI2cTimeoutMs);
+        error = transmit(kPanelOff, sizeof(kPanelOff));
     }
     if (error == ESP_OK) {
-        error = i2c_master_transmit(device, kPanelSetup, sizeof(kPanelSetup), kI2cTimeoutMs);
-    }
-    if (error == ESP_OK && refresh) {
-        // A panel reset by ESD comes back switched off; the full redraw below refills its RAM.
-        error = i2c_master_transmit(device, kPanelOn, sizeof(kPanelOn), kI2cTimeoutMs);
+        error = transmit(kPanelSetup, sizeof(kPanelSetup));
     }
     init_failed = error != ESP_OK;
     if (init_failed) {
@@ -195,6 +203,9 @@ esp_err_t init() {
         return error;
     }
     panel_ready = true;
+    // Switched on only after the full redraw (see show()), on every path including the periodic
+    // refresh: a panel reset by ESD may still hold an old frame, which must not reappear.
+    panel_on_pending = true;
     transfer_ok = true;
     dirty.fill(true);
     return ESP_OK;
@@ -231,14 +242,14 @@ void show(const core::Framebuffer& frame, uint32_t now_ms) {
 
         page_address[1] = static_cast<uint8_t>(0xB0 | page);
         esp_err_t error =
-            i2c_master_transmit(device, page_address.data(), page_address.size(), kI2cTimeoutMs);
+            transmit(page_address.data(), page_address.size());
         if (error == ESP_OK) {
             // Address the page again next time if the pixel write has to wait for another tick.
             if (esp_timer_get_time() >= deadline_us) {
                 return;
             }
             std::memcpy(page_data.data() + 1, pixels, core::Framebuffer::kWidth);
-            error = i2c_master_transmit(device, page_data.data(), page_data.size(), kI2cTimeoutMs);
+            error = transmit(page_data.data(), page_data.size());
         }
         if (error != ESP_OK) {
             record_error("display page write failed", error);
@@ -252,7 +263,7 @@ void show(const core::Framebuffer& frame, uint32_t now_ms) {
     if (panel_on_pending) {
         // Only once every page holds the current frame (the loop returned early otherwise).
         const esp_err_t error =
-            i2c_master_transmit(device, kPanelOn, sizeof(kPanelOn), kI2cTimeoutMs);
+            transmit(kPanelOn, sizeof(kPanelOn));
         if (error != ESP_OK) {
             record_error("display switch-on failed", error);
             return;

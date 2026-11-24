@@ -53,6 +53,12 @@ TEST_CASE("Framebuffer clips everything outside 128x64") {
     Framebuffer corner;
     corner.fill_rect(126, 61, 2, 3);
     CHECK(huge == corner);
+    // Extreme negative edges draw nothing: x + w = INT_MIN - 1 must not wrap to a large value.
+    Framebuffer negative;
+    negative.fill_rect(INT_MIN, 0, -1, 1);
+    negative.fill_rect(0, INT_MIN, 1, -1);
+    negative.fill_rect(INT_MIN, INT_MIN, INT_MAX, INT_MAX);  // Right edge -1: still nothing.
+    CHECK(negative == empty);
     fb.clear();
     CHECK(fb == empty);
 }
