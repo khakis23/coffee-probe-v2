@@ -22,8 +22,6 @@ TEST_CASE("MAX31855 decodes datasheet thermocouple and reference junction temper
         DeciC hot;
         DeciC cold;
     } vectors[]{
-        // MAX31855 Table 4 hot row +1600.00 C and Table 5 cold row +25.0000 C.
-        {0b0110'0100'0000'00, 0b0001'1001'0000, {16000}, {250}},
         // Table 4 hot row +1000.00 C and Table 5 cold row +25.0000 C.
         {0b0011'1110'1000'00, 0b0001'1001'0000, {10000}, {250}},
         // Table 4 hot row +100.75 C and Table 5 cold row +25.0000 C.
@@ -38,10 +36,10 @@ TEST_CASE("MAX31855 decodes datasheet thermocouple and reference junction temper
         {0b1111'1111'1111'00, 0b1111'1111'1111, {-10}, {-1}},
         // Table 4 hot row -250.00 C and Table 5 cold row -0.0625 C.
         {0b1111'0000'0110'00, 0b1111'1111'1111, {-2500}, {-1}},
-        // Table 3 field limits: +2047.75 C hot and +127.9375 C cold.
-        {0x1FFF, 0x7FF, {20478}, {1279}},
-        // Table 3 field limits: -2048 C hot and -128 C cold.
-        {0x2000, 0x800, {-20480}, {-1280}},
+        // Table 3 cold field limits +127.9375 C and -128 C, with Table 4 hot row +25.00 C.
+        // (The hot field limits are outside the K-type range: see the range test below.)
+        {0b0000'0001'1001'00, 0x7FF, {250}, {1279}},
+        {0b0000'0001'1001'00, 0x800, {250}, {-1280}},
     };
 
     for (const auto& vector : vectors) {
@@ -103,5 +101,59 @@ TEST_CASE("MAX31855 rejects invalid bus frames without either temperature") {
         CHECK(reading.fault == TcFault::BusError);
         CHECK(reading.hot == DeciC{0});
         CHECK_FALSE(reading.cold_junction.has_value());
+    }
+}
+
+TEST_CASE("MAX31855 grounded mode accepts only short-to-GND and still reports other faults") {
+    // MAX31855 Tables 2–3: 100.00 C = 400 quarters in D31..D18 = 1000 tenths.
+    // 25.00 C = 400 sixteenths in D15..D4 = 250 tenths. D16 is the summary.
+    constexpr uint32_t base = (400u << 18) | (400u << 4) | (1u << 16);
+    constexpr uint32_t scg = 1u << 1;
+    constexpr uint32_t scv = 1u << 2;
+    constexpr uint32_t open = 1u << 0;
+    CHECK(core::decode_max31855(base | scg, false).fault == TcFault::ShortGnd);
+    const auto grounded = core::decode_max31855(base | scg, true);
+    CHECK(grounded.fault == TcFault::None);
+    CHECK(grounded.hot == DeciC{1000});
+    REQUIRE(grounded.cold_junction.has_value());
+    CHECK(*grounded.cold_junction == DeciC{250});
+
+    // The roaster body is never at VCC: SCV stays a fault in grounded mode, alone or with SCG
+    // (the decoder reports SCG first when both are set).
+    CHECK(core::decode_max31855(base | scv, true).fault == TcFault::ShortVcc);
+    CHECK(core::decode_max31855(base | scg | scv, true).fault == TcFault::ShortGnd);
+
+    const auto disconnected = core::decode_max31855(base | open | scg, true);
+    CHECK(disconnected.fault == TcFault::Open);
+    CHECK(disconnected.hot == DeciC{0});
+
+    CHECK(core::decode_max31855(base, true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855((base | scg) & ~(1u << 16), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(base | scg | (1u << 17), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(base | scv | (1u << 3), true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(0, true).fault == TcFault::BusError);
+    CHECK(core::decode_max31855(0xFFFFFFFFu, true).fault == TcFault::BusError);
+}
+
+TEST_CASE("MAX31855 rejects temperatures outside the K-type range as bus errors") {
+    // D31..D18 hold a 14-bit signed count of 0.25 C; no fault bits, cold junction 0.
+    // +1372.00 C = 5488 = 0x1570 quarters -> 0x1570 << 18 = 0x55C00000.
+    CHECK(core::decode_max31855(0x55C00000u).hot == DeciC{13720});
+    // +1372.25 C = 5489 = 0x1571 -> 0x55C40000: above the range.
+    CHECK(core::decode_max31855(0x55C40000u).fault == TcFault::BusError);
+    // -270.00 C = -1080 quarters = 16384 - 1080 = 15304 = 0x3BC8 -> 0xEF200000.
+    CHECK(core::decode_max31855(0xEF200000u).hot == DeciC{-2700});
+    // -270.25 C = -1081 = 0x3BC7 -> 0xEF1C0000: below the range.
+    CHECK(core::decode_max31855(0xEF1C0000u).fault == TcFault::BusError);
+    // 200 C with 25 C cold junction is 0x0C801900; a flipped sign bit gives 0x8C801900:
+    // 0x2320 = 8992 counts, 8992 - 16384 = -7392 quarters = -1848 C.
+    CHECK(core::decode_max31855(0x0C801900u).hot == DeciC{2000});
+    CHECK(core::decode_max31855(0x8C801900u).fault == TcFault::BusError);
+    // Table 4 hot row +1600.00 C and the Table 3 hot field limits +2047.75 C and -2048 C
+    // are valid frames for the chip but impossible for a K-type probe.
+    for (const uint32_t hot_field : {0b0110'0100'0000'00u, 0x1FFFu, 0x2000u}) {
+        CAPTURE(hot_field);
+        CHECK(core::decode_max31855((hot_field << 18) | (0b0001'1001'0000u << 4)).fault ==
+              TcFault::BusError);
     }
 }

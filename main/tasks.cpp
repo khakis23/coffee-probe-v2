@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "core/sensor_pipeline.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_task_wdt.h"
@@ -11,6 +12,7 @@
 #include "freertos/task.h"
 #include "net/net.hpp"
 #include "state/state_store.hpp"
+#include "thermocouple/thermocouple.hpp"
 
 namespace {
 
@@ -29,9 +31,79 @@ alignas(portBYTE_ALIGNMENT) StackType_t net_stack[kNetStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t ui_stack[kUiStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t health_stack[kHealthStackBytes];
 
+// Kconfig selects the converter and grounded mode. The filter uses SensorConfig defaults.
+core::SensorPipeline sensor_pipeline{core::SensorConfig{}};
+
+const char* fault_name(core::TcFault fault) {
+    switch (fault) {
+        case core::TcFault::None:
+            return "ok";
+        case core::TcFault::Open:
+            return "probe open";
+        case core::TcFault::ShortGnd:
+            return "short to GND";
+        case core::TcFault::ShortVcc:
+            return "short to VCC";
+        case core::TcFault::BusError:
+            return "bus error";
+    }
+    return "unknown";
+}
+
+void sensor_init() {
+    const esp_err_t error = thermocouple::init();
+    if (error != ESP_OK) {
+        ESP_LOGW(kTag, "%s initialization failed: %s", thermocouple::chip_name(),
+                 esp_err_to_name(error));
+    }
+}
+
 void sensor_step() {
-    const auto uptime_s = static_cast<uint32_t>(esp_timer_get_time() / 1'000'000);
-    state::update([uptime_s](core::ProbeState& s) { s.uptime_s = uptime_s; });
+    static core::TcFault previous_fault = core::TcFault::BusError;
+
+    const auto reading = thermocouple::read();
+    const int64_t now_us = esp_timer_get_time();
+    const auto now_ms = static_cast<uint32_t>(now_us / 1000);
+    sensor_pipeline.feed(reading, now_ms);
+    const auto out = sensor_pipeline.output(now_ms);
+    const auto uptime_s = static_cast<uint32_t>(now_us / 1'000'000);
+    state::update([&out, uptime_s](core::ProbeState& s) {
+        s.bt = out.bt;
+        s.fault = out.fault;
+        s.stale = out.stale;
+        s.bt_updated_ms = out.bt_updated_ms;
+        s.cold_junction = out.cold_junction;
+        s.uptime_s = uptime_s;
+    });
+
+    // One INFO line per second with the sample count, so the default log level shows both the
+    // published temperature and that sampling runs at 4 Hz without printing every sample.
+    static uint32_t samples_this_second = 0;
+    static int64_t last_summary_us = now_us;
+    ++samples_this_second;
+    if (reading.fault != core::TcFault::None) {
+        ESP_LOGD(kTag, "thermocouple sample fault %s", fault_name(reading.fault));
+    }
+    if (now_us - last_summary_us >= 1'000'000) {
+        if (out.fault == core::TcFault::None && !out.stale) {
+            const int32_t bt_f = core::to_f(out.bt).v;  // Tenths of a degree, printed without floats.
+            const char* sign = bt_f < 0 ? "-" : "";
+            const int32_t abs_f = bt_f < 0 ? -bt_f : bt_f;
+            ESP_LOGI(kTag, "BT %s%ld.%ld F, %lu samples/s", sign, static_cast<long>(abs_f / 10),
+                     static_cast<long>(abs_f % 10), static_cast<unsigned long>(samples_this_second));
+        } else {
+            // Never print a held value next to a fault: it reads like a real temperature.
+            ESP_LOGI(kTag, "BT --, %s%s, %lu samples/s", fault_name(out.fault),
+                     out.stale ? ", stale" : "", static_cast<unsigned long>(samples_this_second));
+        }
+        samples_this_second = 0;
+        last_summary_us = now_us;
+    }
+    if (out.fault != previous_fault) {
+        ESP_LOGW(kTag, "thermocouple fault changed from %s to %s", fault_name(previous_fault),
+                 fault_name(out.fault));
+        previous_fault = out.fault;
+    }
 }
 
 void net_step() {
@@ -49,12 +121,14 @@ struct Task {
     uint32_t period_ms;
     void (*step)();
     StackType_t* stack;
+    void (*init)() = nullptr;
     StaticTask_t storage{};
     TaskHandle_t handle{};
 };
 
 Task tasks[] = {
-    {"sensor", 5, kSensorStackBytes, 250, sensor_step, sensor_stack},
+    // MAX6675 needs at least 220 ms between reads to finish a conversion.
+    {"sensor", 5, kSensorStackBytes, 250, sensor_step, sensor_stack, sensor_init},
     {"net", 4, kNetStackBytes, 100, net_step, net_stack},
     {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack},
     {"health", 2, kHealthStackBytes, 1000, health_step, health_stack},
@@ -72,6 +146,9 @@ void run_task(void* arg) {
     }
     ESP_LOGI(kTag, "task %s started", task.name);
 
+    if (task.init != nullptr) {
+        task.init();
+    }
     const TickType_t period = pdMS_TO_TICKS(task.period_ms);
     TickType_t wake = xTaskGetTickCount();
     int64_t last_heartbeat_us = esp_timer_get_time();

@@ -2,7 +2,7 @@
 
 namespace core {
 
-TcReading decode_max31855(uint32_t frame) {
+TcReading decode_max31855(uint32_t frame, bool grounded_probe) {
     constexpr uint32_t kReserved = (1u << 17) | (1u << 3);
     constexpr uint32_t kFaultSummary = 1u << 16;
     constexpr uint32_t kOpen = 1u << 0;
@@ -20,7 +20,12 @@ TcReading decode_max31855(uint32_t frame) {
     }
 
     const DeciC cold_junction = from_sixteenth_c(detail::sign_extend<12>(frame >> 4));
-    if (frame & kFaultSummary) {
+    // A tip welded to the grounded roaster body can flag SCG permanently while the
+    // temperature field is still usable (architecture.md, Reliability design). Only SCG:
+    // the roaster body is never at VCC, so SCV still means a real wiring fault.
+    const uint32_t causes = frame & kFaultCauses;
+    const bool accepted_short = grounded_probe && causes == kShortGnd;
+    if ((frame & kFaultSummary) && !accepted_short) {
         if (frame & kOpen) {
             return {{0}, cold_junction, TcFault::Open};
         }
@@ -32,11 +37,16 @@ TcReading decode_max31855(uint32_t frame) {
         }
         return kBusError;
     }
-    if (frame & kFaultCauses) {
+    if (!(frame & kFaultSummary) && causes != 0) {
         return kBusError;
     }
 
     const DeciC hot = from_quarter_c(detail::sign_extend<14>(frame >> 18));
+    // Outside the K-type range (-270 to +1372 C) the frame cannot be a real reading: a flipped
+    // sign bit turns 200 C into -1848 C with every check above still passing.
+    if (hot.v < -2700 || hot.v > 13720) {
+        return kBusError;
+    }
     return {hot, cold_junction, TcFault::None};
 }
 
