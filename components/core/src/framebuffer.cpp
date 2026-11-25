@@ -48,7 +48,7 @@ void Framebuffer::fill_rect(int x, int y, int w, int h, bool on) {
 
 void Framebuffer::hline(int x, int y, int w, bool on) { fill_rect(x, y, w, 1, on); }
 
-int Framebuffer::text(int x, int y, std::string_view s, int scale) {
+int Framebuffer::text(int x, int y, std::string_view s, int scale, bool on) {
     const int k = std::max(scale, 1);
     for (const char raw : s) {
         const char c = (raw < font5x7::kFirst || raw > font5x7::kLast) ? '?' : raw;
@@ -57,7 +57,7 @@ int Framebuffer::text(int x, int y, std::string_view s, int scale) {
             const uint8_t bits = font5x7::kGlyphs[glyph + static_cast<std::size_t>(col)];
             for (int row = 0; row < kGlyphHeight; ++row) {
                 if ((bits >> row) & 1u) {
-                    fill_rect(x + col * k, y + row * k, k, k);
+                    fill_rect(x + col * k, y + row * k, k, k, on);
                 }
             }
         }

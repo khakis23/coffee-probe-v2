@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "core/framebuffer.hpp"
+#include "core/menu.hpp"
 #include "core/probe_state.hpp"
 
 namespace core::ui {
@@ -14,6 +15,9 @@ struct Inputs {
     uint32_t now_ms{0};         // Milliseconds since boot, same clock as ProbeState's times.
     std::string_view ssid{};    // The probe's Wi-Fi name, e.g. "CoffeeProbe-3FA2".
     std::string_view password{};
+    bool show_password{true};          // Settings: off hides the password from the top bar.
+    std::string_view version{};        // Firmware version, for the Diagnostics screen.
+    const menu::Menu* menu{nullptr};   // The settings menu, or nullptr if there is none.
 };
 
 enum class Screen : uint8_t {
@@ -21,6 +25,7 @@ enum class Screen : uint8_t {
     Live,      // A valid reading: big degrees F.
     Probe,     // No valid reading after start-up: "PROBE?" and the likely cause.
     TooHot,    // Thermal Critical: shown just before the protective sleep. Beats everything.
+    Menu,      // The settings menu is open (any of its pages).
 };
 
 // What the one-line top bar says.

@@ -1,5 +1,7 @@
 #include "core/ui.hpp"
 
+#include "ui_draw.hpp"
+
 #include <array>
 #include <cstdlib>
 
@@ -7,6 +9,7 @@ namespace core::ui {
 namespace {
 
 using Fb = Framebuffer;
+using detail::centered;
 
 // ---- Top bar ------------------------------------------------------------------------------
 // One line of small text on rows 0-6 and a divider on row 9, on every screen, so staff can
@@ -15,14 +18,6 @@ using Fb = Framebuffer;
 constexpr int kBarY = 0;
 constexpr int kDividerY = 9;
 
-void centered(Fb& fb, int y, std::string_view a, std::string_view b = {}, int scale = 1) {
-    // a and b are drawn as one line (no heap to join them).
-    const int gap = (a.empty() || b.empty()) ? 0 : (Fb::kGlyphAdvance - Fb::kGlyphWidth) * scale;
-    const int w = Fb::text_width(a, scale) + gap + Fb::text_width(b, scale);
-    const int x = (Fb::kWidth - w) / 2;
-    fb.text(fb.text(x, y, a, scale), y, b, scale);
-}
-
 void draw_top_bar(const Inputs& in, Fb& fb) {
     if (in.state.thermal == ThermalLevel::Warn) {
         // Overheat warning replaces the connection line: inverted, so it stands out at a glance.
@@ -30,13 +25,7 @@ void draw_top_bar(const Inputs& in, Fb& fb) {
         fb.fill_rect(0, 0, Fb::kWidth, kDividerY);
         const std::string_view banner = "BOX TOO HOT: MOVE IT";
         const int x = (Fb::kWidth - Fb::text_width(banner)) / 2;
-        Fb inverted;  // Drawn as dark pixels on the lit bar.
-        inverted.text(x, kBarY + 1, banner);
-        for (int y = 0; y < kDividerY; ++y) {
-            for (int px = 0; px < Fb::kWidth; ++px) {
-                if (inverted.pixel(px, y)) fb.set_pixel(px, y, false);
-            }
-        }
+        fb.text(x, kBarY + 1, banner, 1, false);  // Dark text on the lit bar.
         fb.hline(0, kDividerY, Fb::kWidth);
         return;
     }
@@ -50,7 +39,7 @@ void draw_top_bar(const Inputs& in, Fb& fb) {
         case Link::JoinWifi:
             if (in.ssid.empty()) {
                 centered(fb, kBarY, "Wi-Fi starting");
-            } else if ((in.now_ms / kJoinAlternateMs) % 2 == 0) {
+            } else if (!in.show_password || (in.now_ms / kJoinAlternateMs) % 2 == 0) {
                 centered(fb, kBarY, "Join ", in.ssid);
             } else {
                 centered(fb, kBarY, "Password: ", in.password);
@@ -194,6 +183,9 @@ Screen choose_screen(const Inputs& in) {
     if (in.state.thermal == ThermalLevel::Critical) {
         return Screen::TooHot;
     }
+    if (in.menu != nullptr && in.menu->mode() != menu::Mode::Closed) {
+        return Screen::Menu;
+    }
     // Temperature first whenever it is trustworthy. bt_valid checks the reading's age itself,
     // so a stale number is never drawn as if it were live.
     if (bt_valid(in.state, in.now_ms)) {
@@ -216,6 +208,10 @@ void render(const Inputs& in, Framebuffer& fb) {
         draw_too_hot(fb);
         return;
     }
+    if (screen == Screen::Menu) {
+        detail::draw_menu(in, fb);
+        return;
+    }
     draw_top_bar(in, fb);
     switch (screen) {
         case Screen::Live:
@@ -228,6 +224,7 @@ void render(const Inputs& in, Framebuffer& fb) {
             draw_starting(fb);
             break;
         case Screen::TooHot:
+        case Screen::Menu:
             break;  // Drawn above.
     }
 }

@@ -30,8 +30,9 @@ class Framebuffer {
     void hline(int x, int y, int w, bool on = true);
 
     // Draws text with its top-left corner at (x, y). Returns the x just after the last glyph's
-    // advance, so text can be chained. Scale 0 is treated as 1.
-    int text(int x, int y, std::string_view s, int scale = 1);
+    // advance, so text can be chained. Scale 0 is treated as 1. With on = false the glyphs are
+    // cleared instead, for dark text on a lit bar.
+    int text(int x, int y, std::string_view s, int scale = 1, bool on = true);
     // Width in pixels text() would advance, without the trailing blank column.
     static int text_width(std::string_view s, int scale = 1);
 
