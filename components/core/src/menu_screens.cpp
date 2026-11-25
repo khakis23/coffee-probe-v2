@@ -119,7 +119,8 @@ void draw_diagnostics(const Inputs& in, Fb& fb) {
 
     char buf[16];
     const uint32_t up = in.state.uptime_s;
-    const int n = std::snprintf(buf, sizeof(buf), "%luh %02lum", static_cast<unsigned long>(up / 3600),
+    const int n = std::snprintf(buf, sizeof(buf), "%luh %02lum",
+                                static_cast<unsigned long>(up / 3600),
                                 static_cast<unsigned long>((up / 60) % 60));
     line(fb, 1, "Running for", as_view(buf, n, sizeof(buf)));
 

@@ -89,7 +89,8 @@ std::string_view value_text(Item item, const Settings& s, char (&buf)[12]) {
             return {buf, static_cast<std::size_t>(std::clamp(n, 0, 11))};
         }
         case Item::Channel: {
-            const int n = std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(s.wifi_channel));
+            const int n =
+                std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(s.wifi_channel));
             return {buf, static_cast<std::size_t>(std::clamp(n, 0, 11))};
         }
         case Item::TxPower:
@@ -107,7 +108,8 @@ std::string_view value_text(Item item, const Settings& s, char (&buf)[12]) {
             }
         case Item::Brightness: {
             // Stored 0..3, shown 1..4: "0" would read as "off".
-            const int n = std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(s.brightness) + 1);
+            const int n =
+                std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(s.brightness) + 1u);
             return {buf, static_cast<std::size_t>(std::clamp(n, 0, 11))};
         }
         case Item::Flip:
