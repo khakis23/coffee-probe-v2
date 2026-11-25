@@ -127,8 +127,8 @@ need an extra managed component, a new dependency), and the framebuffer and font
 - **Power warning after 2 dips** since power-on: one can be a fluke at plug-in. If RTC memory doesn't
   survive a brownout on the C3 (unverified; #26 checks), each dip looks like a fresh record, so a
   brownout with no valid record warns at once instead.
-- **The warning clears after 30 min without a dip** and full Wi-Fi power returns (R2: recover without
-  a power cycle). A dip resets the chip, so uptime without a reset is time without a dip.
+- **The warning and the dip count clear after 30 min without a dip**, and full Wi-Fi power returns
+  (R2: recover without a power cycle). A lone dip at plug-in is forgotten the same way. A dip resets the chip, so uptime without a reset is time without a dip.
 - **Liveness counters** for the sensor and net tasks, checked by the health task: a stall of 10 s
   panics. The task watchdog already catches a task stuck inside a step; this catches one that stopped
   being scheduled.

@@ -25,9 +25,11 @@ constexpr uint32_t kUiWaitMs = 1500;
 constexpr uint32_t kWdtStepMs = 100;
 
 // Survives restarts, panics, watchdog resets and deep sleep; random after a power-on, which the
-// record's magic and check catch. Raw bytes, not a BootRecord: a C++ object with default member
+// record's magic and check catch. Raw words, not a BootRecord: a C++ object with default member
 // initializers would be zeroed by a static constructor at every boot, defeating "noinit".
-RTC_NOINIT_ATTR uint8_t rtc_record[sizeof(core::BootRecord)];
+// 32-bit words so the storage is word-aligned whatever the memory's access rules.
+static_assert(sizeof(core::BootRecord) % sizeof(uint32_t) == 0);
+RTC_NOINIT_ATTR uint32_t rtc_record[sizeof(core::BootRecord) / sizeof(uint32_t)];
 core::BootRecord current_record{};  // app_main writes it once at boot; the health task after.
 
 core::BootRecord read_rtc_record() {

@@ -357,12 +357,17 @@ void measure_memory(uint32_t now_ms) {
     });
 }
 
-// The power warning ends after kPowerCalmS without a dip (R2): full Wi-Fi power again.
+// After kPowerCalmS without a dip the count clears (R2), so a single fluke at plug-in isn't
+// still counted hours later; a warning that was on ends and full Wi-Fi power returns.
 void end_power_warning_when_calm(const core::ProbeState& snapshot, uint32_t uptime_s) {
-    if (!snapshot.power_warning || uptime_s < core::kPowerCalmS) {
+    if (uptime_s < core::kPowerCalmS || (!snapshot.power_warning && snapshot.brownouts == 0)) {
         return;
     }
     health::clear_brownouts();
+    if (!snapshot.power_warning) {
+        state::update([](core::ProbeState& s) { s.brownouts = 0; });
+        return;
+    }
     const int8_t tx = core::effective_tx_power_qdbm(boot_settings.tx_power_qdbm,
                                                     board::kBoard.wifi_max_tx_power_qdbm);
     (void)net::set_tx_power(tx);  // Logged by net on failure; the AP keeps working either way.
