@@ -578,6 +578,12 @@ TEST_CASE("diagnostics pages 2 and 3: restarts, crash record, address, memory") 
     ui::render(in, unmeasured);
     CHECK(unmeasured != page2_record);
     in.address = "192.168.4.1";
+    Framebuffer addressed;
+    ui::render(in, addressed);
+    in.state.modbus_clients = 2;
+    Framebuffer two_links;
+    ui::render(in, two_links);
+    CHECK(two_links != addressed);
     in.state.min_free_heap = 150 * 1024;
     in.state.min_stack_free = 1200;
     Framebuffer measured;

@@ -15,8 +15,8 @@
 # Output goes to ~/Library/Caches/coffee-probe/ci/<checkout-hash> (override with CI_OUT=...).
 # Keep builds outside iCloud Drive, which makes "file 2" conflict copies in busy folders.
 #
-# IDF v6 jobs are "allowed to fail" (reported, but don't fail the run), matching continue-on-error
-# in the GitHub workflow, until v6 support lands. Logs: <out>/logs/<job>.log.
+# Every job must pass, v6 included (v6 builds cleanly; the GitHub workflow matches). Logs:
+# <out>/logs/<job>.log.
 #
 # Exit code: 0 if every required job passed, 1 on job failure, 2 on invalid arguments or output setup.
 set -uo pipefail
@@ -186,8 +186,7 @@ for job in "${FIRMWARE_JOBS[@]}"; do
     read -r board idf diag <<<"$job"
     name="$board-$idf"; [ "$diag" = true ] && name="$name-diag"
     selected "$name" || continue
-    allowed=false; [[ "$idf" == v6* ]] && allowed=true
-    run_job "$name" "$allowed" firmware_build "$board" "$idf" "$diag" "$OUT/$name"
+    run_job "$name" false firmware_build "$board" "$idf" "$diag" "$OUT/$name"
 done
 
 echo
