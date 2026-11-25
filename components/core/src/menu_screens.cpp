@@ -154,19 +154,22 @@ void draw_diagnostics_restarts(const Inputs& in, Fb& fb) {
              : (s.crash_record == CrashRecord::Damaged ? "Damaged" : "None"));
 }
 
-// Page 3: where Artisan finds the probe, and the memory margins.
+// Page 3: where Artisan finds the probe, how many connections it has, and the memory margins.
 void draw_diagnostics_system(const Inputs& in, Fb& fb) {
     const ProbeState& s = in.state;
     line(fb, 0, "Address", in.address.empty() ? std::string_view{"--"} : in.address);
+    // Open Modbus connections (#16): normally 1, Artisan. More means another laptop or a stale
+    // connection the server will drop; 4 is the limit.
+    count_line(fb, 1, "Artisan links", s.modbus_clients, "", kRowH);
     if (s.min_free_heap == 0) {
-        line(fb, 1, "Free memory", "--");
+        line(fb, 2, "Free memory", "--");
     } else {
-        count_line(fb, 1, "Free memory", s.min_free_heap / 1024, " KB", kRowH);
+        count_line(fb, 2, "Free memory", s.min_free_heap / 1024, " KB", kRowH);
     }
     if (s.min_stack_free == 0) {
-        line(fb, 2, "Stack spare", "--");
+        line(fb, 3, "Stack spare", "--");
     } else {
-        count_line(fb, 2, "Stack spare", s.min_stack_free, " B", kRowH);
+        count_line(fb, 3, "Stack spare", s.min_stack_free, " B", kRowH);
     }
 }
 

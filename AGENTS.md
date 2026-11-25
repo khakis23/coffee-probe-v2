@@ -66,13 +66,16 @@ mechanically. If a guard fires, the code is wrong: never edit a guard or add an 
 | `docs/STATUS.md` | Current state, next steps, waiting on Tyler. The handoff between sessions | Every session, at the end |
 | `docs/architecture.md` | What we build and how: decisions, tasks, register map, reliability design, pins, milestones | With a DECISIONS entry for real changes |
 | `docs/DECISIONS.md` | Append-only log of decisions and why | Append only |
-| `docs/dev-setup.md` | Toolchain, commands, CLion, crash dumps | When a procedure changes |
+| `docs/dev-setup.md` | Toolchain, commands, CLion, crash dumps, fault-test builds | When a procedure changes |
+| `docs/flashing.md` | Loading firmware onto a probe (release file or from source) | When a procedure changes |
+| `CHANGELOG.md` | What changed for the probe, per release | Every PR that changes behaviour |
+| `artisan/` | Staff-facing guides: `SETUP.md` (Artisan), `QUICKSTART.md` (the card by the roaster) | With the screens and Artisan |
 | `ideas.md` | Tyler's original requirements | Only with Tyler |
 | `CONTRIBUTING.md` | The human-facing summary of how the project runs | Rarely |
 | `components/` | `core` (pure logic), `board` (pins), `thermocouple`, `display`, `buttons`, `net`, `storage`, `health`, `bringup` (temporary diagnostics) | Code |
 | `main/app_main.cpp` | Wiring only: init order and task creation | Code |
 | `test/host/` | doctest host tests for `core` | Code |
-| `scripts/` | `ci-local.sh`, `guards.sh`, `flash.sh`, `serial_capture.py` | Rarely; guards need review |
+| `scripts/` | `ci-local.sh`, `guards.sh`, `flash.sh`, `release.sh`, `serial_capture.py` | Rarely; guards need review |
 | `.github/workflows/ci.yml` | Same jobs as `ci-local.sh`, manual-only (never runs automatically) | Keep both in sync |
 | GitHub issues | The plan, one ticket per task, milestones M0–M7, labels `CLAUDE` / `TYLER` | Agents and Tyler |
 
@@ -83,6 +86,8 @@ scripts/ci-local.sh                 # THE gate: guards + host tests + every firm
 scripts/ci-local.sh guards host     # fast loop while iterating on core logic
 scripts/guards.sh                   # rule checks only (instant)
 scripts/flash.sh [--board generic] [--diag]          # build + flash a plugged-in board
+scripts/flash.sh --fault hang|crash                  # fault-test build for #26 (never for staff)
+scripts/release.sh [--idf v6.0.3]                    # release .bin/.elf files per board
 ~/.espressif/python_env/idf5.3_py3.14_env/bin/python scripts/serial_capture.py --reset --seconds 15
 . ~/esp/esp-idf/export.sh && idf.py build            # by hand (v5.3.1); v6: ~/esp/esp-idf-v6.0
 ```

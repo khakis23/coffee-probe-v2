@@ -72,6 +72,9 @@ if [ "${1:-}" = --sdkconfig ]; then
     else
         report "diagnostics enabled or explicitly set without --diag" "$matches"
     fi
+    # No CI or release build may be a fault-test build (#26).
+    matches="$(scan -nE "^CONFIG_PROBE_FAULT_TEST_(HANG|CRASH)=y" "$config")" || exit 2
+    report "fault-test firmware enabled" "$matches"
     [ "$fail" -ne 0 ] || printf 'guards: sdkconfig OK (%s)\n' "$config"
     exit "$fail"
 fi
@@ -116,6 +119,10 @@ report "FreeRTOS object creation (use the ...Static variant)" "$matches"
 # 5. Bring-up diagnostics must never be on in committed defaults (it replaces the real app).
 matches="$(scan -nE "^[[:space:]]*${diag_symbol}[[:space:]]*=[[:space:]]*y" sdkconfig.defaults*)" || exit 2
 report "CONFIG_PROBE_BRINGUP_DIAG enabled in a committed sdkconfig.defaults file" "$matches"
+
+# 5b. Fault-test builds freeze or crash on purpose (#26): never in committed defaults.
+matches="$(scan -nE "^[[:space:]]*CONFIG_PROBE_FAULT_TEST_(HANG|CRASH)[[:space:]]*=[[:space:]]*y" sdkconfig.defaults*)" || exit 2
+report "CONFIG_PROBE_FAULT_TEST_* enabled in a committed sdkconfig.defaults file" "$matches"
 
 # 6. Board defaults must preserve the required reliability settings.
 check_required sdkconfig.defaults

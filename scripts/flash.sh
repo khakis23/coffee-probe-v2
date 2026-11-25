@@ -4,6 +4,8 @@
 #   scripts/flash.sh                    # DevKit profile, the default, auto-detect the port
 #   scripts/flash.sh --board xiao       # XIAO profile
 #   scripts/flash.sh --diag             # bring-up diagnostics firmware instead of the app
+#   scripts/flash.sh --fault hang       # fault-test firmware for #26: freezes (or crashes) once,
+#                                       # 30 s after power-on. Never leave it on a staff probe.
 #   scripts/flash.sh --port /dev/cu.usbmodem1101 --idf v6.0.3
 #   scripts/flash.sh --build-only       # build, print the folder, don't flash
 #
@@ -13,15 +15,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-board=generic idf=v5.3.1 diag=false port="" build_only=false
+board=generic idf=v5.3.1 diag=false fault="" port="" build_only=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --board) board="$2"; shift 2 ;;
         --idf) idf="$2"; shift 2 ;;
         --diag) diag=true; shift ;;
+        --fault) fault="$2"; shift 2 ;;
         --port) port="$2"; shift 2 ;;
         --build-only) build_only=true; shift ;;
-        -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "Unknown option $1"; exit 2 ;;
     esac
 done
@@ -31,6 +34,14 @@ case "$idf" in
     v6.0.3) idf_path="$HOME/esp/esp-idf-v6.0" ;;
     *) echo "Unknown IDF version $idf (v5.3.1 or v6.0.3)"; exit 2 ;;
 esac
+
+case "$fault" in
+    ""|hang|crash) ;;
+    *) echo "Unknown fault test $fault (hang or crash)"; exit 2 ;;
+esac
+if $diag && [ -n "$fault" ]; then
+    echo "--diag and --fault can't be combined"; exit 2
+fi
 
 if ! $build_only && [ -z "$port" ]; then
     # Native USB boards (XIAO, SuperMini) show up as usbmodem; DevKits with a USB-UART chip as
@@ -51,7 +62,7 @@ if ! $build_only && [ -z "$port" ]; then
 fi
 
 defaults_fingerprint() (
-    local diag="$1" dir="$2" file
+    local diag="$1" dir="$2" fault="$3" file
     export LC_ALL=C
     cd "$ROOT" || return 1
     {
@@ -61,10 +72,13 @@ defaults_fingerprint() (
         if [ "$diag" = true ]; then
             shasum <"$dir/diag.defaults" || return 1
         fi
+        if [ -n "$fault" ]; then
+            shasum <"$dir/fault.defaults" || return 1
+        fi
     } | shasum
 )
 
-name="$board-$idf"; $diag && name="$name-diag"
+name="$board-$idf"; $diag && name="$name-diag"; [ -z "$fault" ] || name="$name-fault-$fault"
 checkout="$(printf %s "$ROOT" | shasum)"
 dir="$HOME/Library/Caches/coffee-probe/flash/${checkout:0:10}/$name"
 mkdir -p "$dir"
@@ -73,8 +87,13 @@ if $diag; then
     printf 'CONFIG_PROBE_BRINGUP_DIAG=y\n' >"$dir/diag.defaults"
     extra+=("-DPROBE_EXTRA_DEFAULTS=$dir/diag.defaults")
 fi
+if [ -n "$fault" ]; then
+    symbol="CONFIG_PROBE_FAULT_TEST_$(printf %s "$fault" | tr '[:lower:]' '[:upper:]')"
+    printf '%s=y\n' "$symbol" >"$dir/fault.defaults"
+    extra+=("-DPROBE_EXTRA_DEFAULTS=$dir/fault.defaults")
+fi
 # Board defaults only apply to a fresh sdkconfig, so compare their contents before building.
-fingerprint="$(defaults_fingerprint "$diag" "$dir")"
+fingerprint="$(defaults_fingerprint "$diag" "$dir" "$fault")"
 if [ ! -f "$dir/.defaults-fingerprint" ] || [ "$(<"$dir/.defaults-fingerprint")" != "$fingerprint" ]; then
     rm -f "$dir/sdkconfig"
 fi
