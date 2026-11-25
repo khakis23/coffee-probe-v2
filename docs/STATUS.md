@@ -3,7 +3,7 @@
 *The handoff between sessions. Agents update it at the end of every session; Tyler can read it any
 time to see where things stand.*
 
-**Last updated:** 2026-11-24 (Tuesday)
+**Last updated:** 2026-11-24 (Tuesday evening)
 
 ## In plain English
 
@@ -13,8 +13,9 @@ now has the whole Artisan path:
 - it filters out glitches and spots an unplugged probe within half a second
 - it serves the temperature to Artisan over its own Wi-Fi network
 
-The small screen now has its MVP version too, and a draft setup guide is written. **None of it has
-run on a wired board yet.** The wiring (#3) is still the thing that unblocks real testing. Tyler couldn't do it on
+The small screen now has its MVP version too, and a draft setup guide is written. Ahead of plan,
+the after-MVP overheat protection and the settings menu (with factory reset) are written too.
+**None of it has run on a wired board yet.** The wiring (#3) is still the thing that unblocks real testing. Tyler couldn't do it on
 Tuesday as planned, so all hardware checks are queued for when he can.
 
 ## MVP plan (D-008)
@@ -42,7 +43,9 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
-| this | #22 | Settings that survive power cuts and can't break the probe: checked with a checksum, anything damaged falls back to defaults, one bad value doesn't wipe the others. Not used yet (the menu, #23) |
+| #52 | #23 | The settings menu: hold OK to open; probe chip, grounded tip, offset, Wi-Fi channel and power, brightness, flip, show password, diagnostics, factory reset. Holding OK at power-on for 5 s also resets. Buttons not wired yet: hardware test #53 (after the MVP) |
+| #51 | #24 | Overheat protection: "BOX TOO HOT: MOVE IT" banner when warm; "TOO HOT" and a 1-minute cooling sleep when critical. Needs a heat-gun test on the wired board (issue open) |
+| #50 | #22 | Settings that survive power cuts and can't break the probe: checked with a checksum, anything damaged falls back to defaults, one bad value doesn't wipe the others. Not used yet (the menu, #23) |
 | #49 | #21 | Button presses: turns the buttons' noisy signal into clean "short press" and "long press" events (for the settings menu, after the MVP) |
 | #48 | #18, #19, #20 | The screen: big °F while reading, `PROBE?` with the likely cause, a top line saying whether Artisan is connected or how to join the Wi-Fi (issues open for hardware checks) |
 | #47 | (#17) | Draft `artisan/SETUP.md`: the staff guide for connecting Artisan, labels from Artisan's source, screenshots pending #17 |
@@ -78,7 +81,12 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
    - stack high-water marks ≥ 25 % free
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
-3. Post-MVP, in milestone order: #24 overheat (in progress), then #23 menu (applies the settings), #25 diagnostics.
+   - #24: heat gun on the box until the banner, then TOO HOT; the panel keeps showing it during the
+     sleep; the probe wakes and resumes once cool
+3. Post-MVP, in milestone order: **#25** (crash and power-problem visibility: reset reason, brownout
+   counter, on the Diagnostics page), then #28. #26/#27 are hardware test sessions.
+4. Not done in #24: waking from the cooling sleep with a button (the buttons weren't in the firmware
+   then). Add it once #53 shows the buttons work.
 
 ## Scope (confirmed with Tyler, D-007)
 
@@ -89,13 +97,17 @@ temperature only. The enclosure is Tyler's; this project delivers firmware, guid
 
 - **#3 (TYLER), ready now**: wire the DevKit, thermocouple chip and screen (plain steps in the issue, about
   45 min), then leave it plugged into the Mac. Everything hardware-related depends on it.
+- **#53 (TYLER), after the MVP, not urgent**: wire three buttons and walk through the settings menu and
+  factory reset (about 25 min).
 
 ## Known issues / notes
 
 - Nothing has run on real hardware yet. Which screen, which temperature chip, and whether the probe
   tip is grounded stay unconfirmed until #3. The firmware defaults to the MAX31855, not grounded.
-- CI builds only the default MAX31855 configuration. The MAX6675 path was built once by hand on
-  2026-11-24 and compiled cleanly.
+- The thermocouple chip is now chosen at runtime (settings menu, D-012), so CI compiles both chip
+  paths in every build. The Kconfig chip option only sets the factory default.
+- Codex hit its 5-hour cap on 2026-11-24; Gemini did the reviews for #24 and #23 instead. Long Gemini
+  review prompts time out after 10 min: split reviews into small focused prompts with a word cap.
 - The scripts that load firmware onto the board and read its output have only been tested without a
   board attached.
 - IDF's DHCP server always tells clients to use the probe for DNS; nothing answers, so lookups fail fast and
