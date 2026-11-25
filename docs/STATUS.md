@@ -14,8 +14,8 @@ now has the whole Artisan path:
 - it serves the temperature to Artisan over its own Wi-Fi network
 
 The small screen now has its MVP version too, and a draft setup guide is written. Ahead of plan,
-the after-MVP overheat protection, the settings menu (with factory reset) and crash/power-problem
-diagnostics are written too, and the staff quick-start card is drafted (`artisan/QUICKSTART.md`).
+the after-MVP overheat protection, the settings menu (with factory reset), crash/power-problem
+diagnostics and screen burn-in protection are written too, and the staff quick-start card is drafted (`artisan/QUICKSTART.md`).
 **None of it has run on a wired board yet.** The wiring (#3) is still the thing that unblocks real testing. Tyler couldn't do it on
 Tuesday as planned, so all hardware checks are queued for when he can.
 
@@ -44,6 +44,7 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
+| #57 | #20 | Burn-in protection: the picture moves one dot every 3 min; an idle screen (no reading, no button, no warning) dims after 10 min. Diagnostics page 2 shows whether a crash report is saved, page 3 the probe's address |
 | #55 | #25 | Diagnostics page 2 (why it last restarted, restarts, crashes, power dips, memory); "Check USB cable/power" and lower Wi-Fi power after repeated power dips, clearing after 30 calm minutes; restarts itself if its reading or network job stops. Hardware checks go with #26 |
 | #52 | #23 | The settings menu: hold OK to open; probe chip, grounded tip, offset, Wi-Fi channel and power, brightness, flip, show password, diagnostics, factory reset. Holding OK at power-on for 5 s also resets. Buttons not wired yet: hardware test #53 (after the MVP) |
 | #51 | #24 | Overheat protection: "BOX TOO HOT: MOVE IT" banner when warm; "TOO HOT" and a 1-minute cooling sleep when critical. Needs a heat-gun test on the wired board (issue open) |
@@ -80,12 +81,13 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
      restart the probe. The display checks the line before every transfer, which covers most cases
      but not a jam in the middle of a transfer. v6 bounds that wait.
    - stack high-water marks ≥ 25 % free (the UI task now also runs the menu)
+   - #20: dimmed contrast readable up close; the one-pixel shift not noticeable
    - set the factory-default chip with Kconfig if it's a MAX6675 (staff can also change it in the menu)
    - #24: heat gun on the box until the banner, then TOO HOT; the panel keeps showing it during the
      sleep; the probe wakes and resumes once cool
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
-3. All post-MVP code tickets are merged (#22–#25). What's left is hardware: #26 fault injection (needs
+3. All code that can be written without the board is merged (#20 burn-in, #22–#25). What's left is hardware: #26 fault injection (needs
    a test build that simulates a task hang; make it when that session is scheduled), #27 soak and heat,
    then #28 (release; the quick-start card is drafted in `artisan/QUICKSTART.md`, `docs/flashing.md`
    still to write).
