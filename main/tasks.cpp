@@ -1,10 +1,13 @@
 #include "tasks.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
 
+#include "buttons/buttons.hpp"
+#include "core/menu.hpp"
 #include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
 #include "core/thermal.hpp"
@@ -22,6 +25,7 @@
 #include "net/net.hpp"
 #include "net/softap_config.hpp"
 #include "state/state_store.hpp"
+#include "storage/storage.hpp"
 #include "thermocouple/thermocouple.hpp"
 
 namespace {
@@ -41,7 +45,14 @@ alignas(portBYTE_ALIGNMENT) StackType_t net_stack[kNetStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t ui_stack[kUiStackBytes];
 alignas(portBYTE_ALIGNMENT) StackType_t health_stack[kHealthStackBytes];
 
-// Kconfig selects the converter and grounded mode. The filter uses SensorConfig defaults.
+// What this boot runs with; set by start_tasks() before any task starts, then read-only. The
+// menu's copy (in the UI task) is the one that changes.
+core::Settings boot_settings{};
+// The calibration offset (tenths of a degree F): written by the UI task when the menu saves
+// it, applied by the sensor task from its next sample.
+std::atomic<int16_t> offset_deci_f{0};
+
+// The converter and grounded mode were set with thermocouple::configure() before the tasks.
 core::SensorPipeline sensor_pipeline{core::SensorConfig{}};
 
 const char* fault_name(core::TcFault fault) {
@@ -70,6 +81,13 @@ void sensor_init() {
 
 void sensor_step() {
     static core::TcFault previous_fault = core::TcFault::BusError;
+    static int32_t applied_offset = INT32_MIN;  // Not a valid offset: applies on the first step.
+
+    const int16_t offset = offset_deci_f.load(std::memory_order_relaxed);
+    if (offset != applied_offset) {
+        sensor_pipeline.set_calibration_offset(core::offset_deci_c(offset));
+        applied_offset = offset;
+    }
 
     const auto reading = thermocouple::read();
     const int64_t now_us = esp_timer_get_time();
@@ -149,26 +167,89 @@ void net_step() {
     });
 }
 
+// The UI task runs every 10 ms for the buttons (the debouncer needs 10 ms polls) and redraws
+// every 100 ms, or at once after a press so the menu feels immediate.
+constexpr uint32_t kUiPeriodMs = 10;
+constexpr uint32_t kRenderPeriodMs = 100;
+
 void ui_init() {
+    if (const esp_err_t error = buttons::init(); error != ESP_OK) {
+        ESP_LOGW(kTag, "Button setup failed: %s", esp_err_to_name(error));
+    }
+    display::configure(boot_settings.brightness, boot_settings.display_flip);
     // The driver logs the error and rate-limits its warnings across retries.
     if (display::init() != ESP_OK) {
         ESP_LOGD(kTag, "UI will retry display initialization");
     }
 }
 
+// Carries out what the menu asked for. Saving runs here, on the UI task: an NVS write takes
+// tens of milliseconds, well inside the task watchdog, and Artisan's link is on another task.
+void carry_out(core::menu::Action action, const core::menu::Menu& menu) {
+    switch (action) {
+        case core::menu::Action::None:
+            return;
+        case core::menu::Action::Save: {
+            const core::Settings& s = menu.settings();
+            if (const esp_err_t error = storage::save(s); error != ESP_OK) {
+                // The change still applies until the next restart; it just isn't kept.
+                ESP_LOGE(kTag, "Saving settings failed: %s", esp_err_to_name(error));
+            } else {
+                ESP_LOGI(kTag, "settings saved");
+            }
+            display::configure(s.brightness, s.display_flip);
+            offset_deci_f.store(s.offset_deci_f, std::memory_order_relaxed);
+            return;
+        }
+        case core::menu::Action::Restart:
+            ESP_LOGI(kTag, "restarting to apply settings");
+            esp_restart();
+        case core::menu::Action::FactoryReset:
+            if (const esp_err_t error = storage::erase(); error != ESP_OK) {
+                ESP_LOGE(kTag, "Factory reset failed: %s", esp_err_to_name(error));
+                return;  // Restarting would only come back with the same settings.
+            }
+            ESP_LOGW(kTag, "factory reset, restarting");
+            esp_restart();
+    }
+}
+
 void ui_step() {
+    static core::menu::Menu menu{boot_settings};  // Built on the first step, after start_tasks().
     static core::Framebuffer frame;
     static core::ui::Inputs in;
+    static uint32_t last_render_ms = 0;
+    static bool rendered = false;
+
+    auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    core::menu::Press presses[buttons::kButtons];
+    const int count = buttons::poll(now_ms, presses);
+    for (int i = 0; i < count; ++i) {
+        carry_out(menu.handle(presses[i], now_ms), menu);
+    }
+    menu.tick(now_ms);
+    if (rendered && count == 0 && now_ms - last_render_ms < kRenderPeriodMs) {
+        return;
+    }
+
     core::ProbeState snapshot;
     // A lock timeout leaves a fault/stale snapshot so the UI shows a probe fault.
     (void)state::snapshot(snapshot);
-    const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+    if (snapshot.thermal == core::ThermalLevel::Critical) {
+        menu.close();  // The probe is about to sleep: drop any unsaved edit.
+    }
+    now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     in.state = snapshot;
     in.now_ms = now_ms;
     in.ssid = net::ssid();
     in.password = net::kPassword;
+    in.show_password = menu.settings().show_password;
+    in.version = esp_app_get_description()->version;
+    in.menu = &menu;
     core::ui::render(in, frame);
     display::show(frame, now_ms);
+    last_render_ms = now_ms;
+    rendered = true;
 }
 
 void health_init() {
@@ -258,7 +339,7 @@ Task tasks[] = {
     // and its watchdog between rounds. The 20 ms poll period adds at most 20 ms of polling
     // latency to Artisan's 1–3 s polling interval.
     {"net", 4, kNetStackBytes, 20, net_step, net_stack, net_init},
-    {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack, ui_init},
+    {"ui", 3, kUiStackBytes, kUiPeriodMs, ui_step, ui_stack, ui_init},
     {"health", 2, kHealthStackBytes, 1000, health_step, health_stack, health_init},
 };
 
@@ -294,7 +375,9 @@ void run_task(void* arg) {
 
 }  // namespace
 
-void start_tasks() {
+void start_tasks(const core::Settings& settings) {
+    boot_settings = settings;
+    offset_deci_f.store(settings.offset_deci_f, std::memory_order_relaxed);
     for (auto& task : tasks) {
         task.handle = xTaskCreateStatic(run_task, task.name, task.stack_bytes, &task, task.priority,
                                         task.stack, &task.storage);

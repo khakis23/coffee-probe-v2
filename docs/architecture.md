@@ -95,7 +95,28 @@ and the driver sends only the 128-byte pages that changed.
 
 A one-line top bar on every screen: "Artisan connected" (a Modbus client asked within 5 s), "Waiting for
 Artisan" (a device joined the Wi-Fi), or, with nobody connected, "Join CoffeeProbe-XXXX" alternating with
-"Password: coffeeprobe" every 3 s. Overheat, Diagnostics and burn-in protection come after the MVP.
+"Password: coffeeprobe" every 3 s (the password only if the "Show password" setting is on). Overheat
+(#24): Warn turns the top bar into an inverted "BOX TOO HOT: MOVE IT"; Critical shows a full-screen TOO HOT
+before the protective sleep. Burn-in protection comes later.
+
+### Settings menu (#23)
+
+`core::menu::Menu` (pure, host-tested) driven by button presses; the `ui` task polls the buttons every
+10 ms, redraws every 100 ms or at once after a press, and carries out what the menu returns.
+
+- **Hold OK** (0.8 s) opens it, so a stray tap never hides the temperature mid-roast. UP/DOWN move
+  (wrapping), OK opens an item, BACK closes. 30 s without a press closes it and drops an unsaved edit.
+  TOO HOT closes it.
+- Items: Probe chip, Grounded tip, Offset (±10.0 °F, 0.1 per press, 1.0 per hold), Wi-Fi channel (1/6/11),
+  Wi-Fi power (Auto/Low/Medium/High, capped at the board's limit), Brightness (1–4), Flip screen, Show
+  password, Diagnostics (firmware, uptime, box and chip temperatures, Wi-Fi devices), Factory reset.
+- Editor: full screen, the value large, "OK save BACK cancel". Offset, brightness, flip and show password
+  apply at once; probe chip, grounded tip and both Wi-Fi settings are set up at boot, so saving them asks
+  "Restart to apply this change?" (a held OK restarts, so a double tap can't; BACK keeps it for the
+  next power-on). Diagnostics: any button goes back.
+- Factory reset: from the menu (confirm with a held OK), or by holding OK from power-on for 5 s with an
+  on-screen countdown (letting go cancels). Both erase the saved settings; the build options are the
+  factory default for the probe chip and grounded mode (D-012).
 
 Known limit: if the OLED's I2C bus dies, the panel keeps showing whatever it last received (nothing can
 blank it without the bus). Artisan is unaffected. After any bus error the panel is switched off and only
@@ -106,7 +127,7 @@ switched on again once a whole current frame has been written, so an old number 
 Failure mode → how we handle it:
 
 - **Probe unplugged or broken**: MAX fault bits → fault value to Artisan + big `PROBE?` on the OLED within 1 s. Recovers by itself when fixed.
-- **Grounded-tip probe** (common on drum roasters; makes the MAX31855 report a short-to-GND fault nonstop): a "Grounded probe" option accepts short-to-GND only (short-to-VCC and open still fault). Until settings exist it is the Kconfig option `PROBE_TC_GROUNDED`, off by default. In this mode a crushed cable shorting to ground can't be detected. Hardware: 10 nF across T+/T−.
+- **Grounded-tip probe** (common on drum roasters; makes the MAX31855 report a short-to-GND fault nonstop): a "Grounded probe" option accepts short-to-GND only (short-to-VCC and open still fault). It is a setting ("Grounded tip"); the Kconfig option `PROBE_TC_GROUNDED` is its factory default, off. In this mode a crushed cable shorting to ground can't be detected. Hardware: 10 nF across T+/T−.
 - **Noise spikes**: median-of-3, then a 50 °C/s rate-of-change limit (`core::SensorPipeline`). Faults are debounced over 3 samples (one glitch never shows; an unplugged probe shows 500 ms after the first bad sample). A reading older than 2 s is stale; consumers check age themselves with `bt_valid(state, now_ms)`, so a frozen sensor task can't leave an old reading valid.
 - **Replug bounce**: at boot, after a fault and after a gap longer than 2 s, nothing is published until three consecutive good samples agree (each step within the rate limit, 5 °C noise floor). Any fault during recovery restarts it.
 - **Impossible frames**: MAX31855 values outside the K-type range (−270…+1372 °C) and MAX6675 `0x0000` (data line stuck low) count as bus errors. An SPI transfer stuck for 5 s panics (coredump, reboot).

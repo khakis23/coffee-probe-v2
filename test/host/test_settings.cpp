@@ -232,3 +232,21 @@ TEST_CASE("A later version's blob of a different size reads as UnknownVersion, n
     const std::array<uint8_t, 11> tiny{'C', 'P', 'S', 'T', 1, 0, 0, 0, 0, 0, 0};
     CHECK(core::decode_settings(tiny).status == core::SettingsStatus::Corrupt);
 }
+
+TEST_CASE("settings: offset in F becomes an offset in C, rounded half away from zero") {
+    CHECK(core::offset_deci_c(0).v == 0);
+    CHECK(core::offset_deci_c(18).v == 10);     // 1.8 F = 1.0 C
+    CHECK(core::offset_deci_c(-18).v == -10);
+    CHECK(core::offset_deci_c(100).v == 56);    // 10.0 F = 5.555.. C -> 5.6
+    CHECK(core::offset_deci_c(-100).v == -56);
+    CHECK(core::offset_deci_c(1).v == 1);       // 0.1 F = 0.0555 C -> 0.1 (away from zero)
+    CHECK(core::offset_deci_c(-1).v == -1);
+}
+
+TEST_CASE("settings: Wi-Fi power is capped at the board's limit") {
+    CHECK(core::effective_tx_power_qdbm(0, 34) == 34);   // Auto
+    CHECK(core::effective_tx_power_qdbm(32, 34) == 32);  // Low
+    CHECK(core::effective_tx_power_qdbm(78, 34) == 34);  // High on a XIAO: capped
+    CHECK(core::effective_tx_power_qdbm(78, 80) == 78);
+    CHECK(core::effective_tx_power_qdbm(84, 80) == 80);
+}

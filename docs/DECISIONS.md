@@ -103,3 +103,18 @@ approach the bringup diagnostics already proved on both IDF versions, and full c
 bus reset and re-init (R2/R3). IDF ships an `esp_lcd` panel driver only for the SSD1306 (the SH1106 would
 need an extra managed component, a new dependency), and the framebuffer and fonts are ours anyway, so
 `esp_lcd` would add a layer without removing any code.
+
+## D-012 · 2026-11-24 · Settings menu choices (Claude)
+
+- **The Kconfig converter and grounded-probe options become the factory default** instead of being
+  removed. When nothing valid is saved (new board, factory reset, damaged NVS) the build options apply
+  and the menu shows them, so a unit built for a MAX6675 still works out of the box. A saved setting
+  wins. The thermocouple driver now handles both chips at runtime (replaces the build-time choice in
+  D-008).
+- **A long OK opens the menu.** A short press does nothing on the live screen: staff tapping buttons
+  mid-roast must never lose the temperature.
+- **Settings set up at boot ask for a restart** (probe chip, grounded tip, Wi-Fi channel and power)
+  rather than being re-applied live. Reconfiguring Wi-Fi or the SPI driver while running adds failure
+  modes for settings changed once in the probe's life.
+- **The calibration offset is in °F** (the unit staff see), stored in tenths, converted to tenths of °C
+  for the sensor pipeline.

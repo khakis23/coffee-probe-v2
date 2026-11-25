@@ -18,7 +18,7 @@ menu "CoffeeProbe thermocouple"
             Enable only for a probe tip that touches the grounded roaster body.
             In this mode a short to ground is accepted, so a crushed cable that
             shorts both leads to grounded metal is NOT detected and reads close to
-            the electronics temperature. The converter and grounded mode are fixed
-            at build time until settings are available (D-008).
+            the electronics temperature. This and the converter choice are the
+            factory default; the settings menu overrides them (D-012).
 
 endmenu

@@ -39,6 +39,7 @@ constexpr uint8_t kColumnStart = 0;
 constexpr uint8_t kPanelOff[] = {kCommand, 0xAE};
 
 // Safe to resend at any time; leaves the on/off state alone (0xAF is sent separately).
+// configure() changes the orientation and contrast in a copy (panel_setup, below).
 constexpr uint8_t kPanelSetup[] = {
     kCommand,
     0xD5, 0x80,  // Clock divide ratio / oscillator frequency.
@@ -51,10 +52,10 @@ constexpr uint8_t kPanelSetup[] = {
     0x8D, 0x14,  // SSD1306 internal charge pump.
     0x20, 0x02,  // Page addressing, native on SH1106.
 #endif
-    0xA1,        // Remap segments for the panel's left-to-right orientation.
-    0xC8,        // Remap COM scan direction.
+    0xA1,        // Remap segments for the panel's left-to-right orientation (flip: 0xA0).
+    0xC8,        // Remap COM scan direction (flip: 0xC0).
     0xDA, 0x12,  // COM pins for a 128x64 panel.
-    0x81, 0xCF,  // Contrast.
+    0x81, 0xCF,  // Contrast (brightness setting).
     0xD9, 0xF1,  // Pre-charge period.
     0xDB, 0x40,  // VCOMH deselect level.
     0xA4,        // Display follows RAM.
@@ -62,7 +63,24 @@ constexpr uint8_t kPanelSetup[] = {
 };
 constexpr uint8_t kPanelOn[] = {kCommand, 0xAF};
 
+// Where configure() writes in the setup sequence. None of these values appears earlier in it
+// as a parameter, so the first match is the command itself.
+constexpr std::size_t index_of(uint8_t command) {
+    for (std::size_t i = 1; i < sizeof(kPanelSetup); ++i) {
+        if (kPanelSetup[i] == command) return i;
+    }
+    return 0;
+}
+constexpr std::size_t kSegmentRemapAt = index_of(0xA1);
+constexpr std::size_t kComScanAt = index_of(0xC8);
+constexpr std::size_t kContrastAt = index_of(0x81) + 1;
+static_assert(kSegmentRemapAt != 0 && kComScanAt != 0 && kContrastAt > 1);
+// Brightness setting 0..3 -> contrast. 3 is the value the panel ran at before settings.
+constexpr uint8_t kContrast[] = {0x08, 0x30, 0x80, 0xCF};
+
 // The UI task owns these handles and buffers. No other task waits on this bus.
+std::array<uint8_t, sizeof(kPanelSetup)> panel_setup = std::to_array(kPanelSetup);
+bool setup_changed = false;
 i2c_master_bus_handle_t bus = nullptr;
 i2c_master_dev_handle_t device = nullptr;
 std::array<uint8_t, core::Framebuffer::kBytes> sent{};
@@ -180,6 +198,17 @@ esp_err_t ensure_device() {
 
 }  // namespace
 
+void configure(uint8_t brightness, bool flip) {
+    auto setup = std::to_array(kPanelSetup);
+    setup[kSegmentRemapAt] = flip ? 0xA0 : 0xA1;
+    setup[kComScanAt] = flip ? 0xC0 : 0xC8;
+    setup[kContrastAt] = kContrast[brightness < sizeof(kContrast) ? brightness : 3];
+    if (setup != panel_setup) {
+        panel_setup = setup;
+        setup_changed = true;  // show() resends the setup and redraws every page.
+    }
+}
+
 esp_err_t init() {
     last_init_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     // panel_ready is true only for the periodic refresh of a panel that is working.
@@ -195,7 +224,7 @@ esp_err_t init() {
         error = transmit(kPanelOff, sizeof(kPanelOff));
     }
     if (error == ESP_OK) {
-        error = transmit(kPanelSetup, sizeof(kPanelSetup));
+        error = transmit(panel_setup.data(), panel_setup.size());
     }
     init_failed = error != ESP_OK;
     if (init_failed) {
@@ -216,7 +245,8 @@ void show(const core::Framebuffer& frame, uint32_t now_ms) {
     if (init_failed && now_ms - last_init_ms < kRetryMs) {
         return;
     }
-    if (!panel_ready || now_ms - last_init_ms >= kReinitMs) {
+    if (!panel_ready || setup_changed || now_ms - last_init_ms >= kReinitMs) {
+        setup_changed = false;
         if (init() != ESP_OK) {
             return;
         }

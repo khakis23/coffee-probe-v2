@@ -108,7 +108,7 @@ esp_err_t configure_ap_netif(esp_netif_t* ap_netif) {
 
 }  // namespace
 
-esp_err_t start_softap() {
+esp_err_t start_softap(uint8_t channel, int8_t tx_power_qdbm) {
     if (const auto error = check_step("esp_netif_init", esp_netif_init()); error != ESP_OK) {
         return error;
     }
@@ -155,7 +155,7 @@ esp_err_t start_softap() {
     config.ap.ssid_len = sizeof(kSsidPrefix) - 1 + kMacSuffixLength;
     std::memcpy(config.ap.ssid, ap_ssid, config.ap.ssid_len);
     std::memcpy(config.ap.password, kPassword, sizeof(kPassword));
-    config.ap.channel = kChannel;
+    config.ap.channel = channel;
     config.ap.max_connection = kMaxClients;
     config.ap.authmode = WIFI_AUTH_WPA2_PSK;
     config.ap.beacon_interval = kBeaconIntervalTu;
@@ -181,7 +181,7 @@ esp_err_t start_softap() {
     // The AP is up at this point. TX power and power save are tuning: if either call fails, keep
     // the working AP (logged by check_step) rather than failing start-up and rebooting.
     check_step("esp_wifi_set_max_tx_power",
-               esp_wifi_set_max_tx_power(board::kBoard.wifi_max_tx_power_qdbm));
+               esp_wifi_set_max_tx_power(tx_power_qdbm));
     check_step("esp_wifi_set_ps", esp_wifi_set_ps(WIFI_PS_NONE));
     return ESP_OK;
 }
