@@ -86,10 +86,14 @@ BootInfo record_boot() {
     return info;
 }
 
-bool crash_record_saved() {
+core::CrashRecord crash_record() {
     size_t address = 0;
     size_t size = 0;
-    return esp_core_dump_image_get(&address, &size) == ESP_OK && size > 0;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK || size == 0) {
+        return core::CrashRecord::None;
+    }
+    return esp_core_dump_image_check() == ESP_OK ? core::CrashRecord::Saved
+                                                 : core::CrashRecord::Damaged;
 }
 
 void clear_brownouts() {

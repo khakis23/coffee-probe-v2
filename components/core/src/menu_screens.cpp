@@ -148,7 +148,10 @@ void draw_diagnostics_restarts(const Inputs& in, Fb& fb) {
     count_line(fb, 1, "Restarts", s.boots > 0 ? s.boots - 1u : 0u, "", kRowH);
     count_line(fb, 2, "Crashes", s.crashes, "", kRowH);
     count_line(fb, 3, "Power dips", s.brownouts, "", kRowH);
-    line(fb, 4, "Crash record", s.crash_record ? "Saved" : "None");
+    line(fb, 4, "Crash record",
+         s.crash_record == CrashRecord::Saved
+             ? "Saved"
+             : (s.crash_record == CrashRecord::Damaged ? "Damaged" : "None"));
 }
 
 // Page 3: where Artisan finds the probe, and the memory margins.

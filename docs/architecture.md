@@ -115,7 +115,7 @@ the menu and TOO HOT never dim, and a reading or a press brightens it at once.
 - Items: Probe chip, Grounded tip, Offset (±10.0 °F, 0.1 per press, 1.0 per hold), Wi-Fi channel (1/6/11),
   Wi-Fi power (Auto/Low/Medium/High, capped at the board's limit), Brightness (1–4), Flip screen, Show
   password, Diagnostics (three pages, UP/DOWN switch: firmware, uptime, box and chip temperatures, Wi-Fi
-  devices; last reset, restarts, crashes, power dips, crash record saved; address, lowest free memory,
+  devices; last reset, restarts, crashes, power dips, crash record (None/Saved/Damaged); address, lowest free memory,
   smallest stack headroom), Factory reset.
 - Editor: full screen, the value large, "OK save BACK cancel". Offset, brightness, flip and show password
   apply at once; probe chip, grounded tip and both Wi-Fi settings are set up at boot, so saving them asks

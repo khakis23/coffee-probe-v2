@@ -564,10 +564,14 @@ TEST_CASE("diagnostics pages 2 and 3: restarts, crash record, address, memory") 
     Framebuffer page2_counts;
     ui::render(in, page2_counts);
     CHECK(page2_counts != page2);
-    in.state.crash_record = true;
+    in.state.crash_record = core::CrashRecord::Saved;
     Framebuffer page2_record;
     ui::render(in, page2_record);
     CHECK(page2_record != page2_counts);
+    in.state.crash_record = core::CrashRecord::Damaged;
+    Framebuffer page2_damaged;
+    ui::render(in, page2_damaged);
+    CHECK(page2_damaged != page2_record);
 
     m.handle(kDown, 0);
     Framebuffer unmeasured;
