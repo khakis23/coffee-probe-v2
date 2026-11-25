@@ -34,13 +34,17 @@ void shift(Framebuffer& fb, int dx, int dy);
 
 class IdleDimmer {
    public:
-    // Call every frame with the screen being shown and whether a button was pressed since the
-    // last call. Returns true while the panel should be dimmed. The Live screen (staff glance at
-    // it mid-roast), the menu and TOO HOT are never dimmed and restart the count.
-    bool update(Screen screen, bool pressed, uint32_t now_ms);
+    // Call every frame with the screen being shown and whether there is activity: a button press
+    // or a button held, or a warning on screen (overheat banner, power warning). Returns true
+    // while the panel should be dimmed. The Live screen (staff glance at it mid-roast), the menu
+    // and TOO HOT are never dimmed. Activity or one of those screens brightens it at once and
+    // restarts the count. Once dimmed it stays dimmed until then, so the clock wrapping after
+    // 49.7 days can't brighten it.
+    bool update(Screen screen, bool activity, uint32_t now_ms);
 
    private:
     bool started_{false};
+    bool dimmed_{false};
     uint32_t active_ms_{0};  // Last time something kept the screen bright.
 };
 

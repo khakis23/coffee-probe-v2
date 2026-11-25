@@ -265,7 +265,11 @@ void ui_step() {
         const core::ui::Offset offset = core::ui::burn_in_offset(now_ms);
         core::ui::shift(frame, offset.dx, offset.dy);
     }
-    const bool dim = dimmer.update(screen, count > 0, now_ms);
+    // A warning on screen counts as activity, so the overheat banner or the power warning never
+    // appears at the dimmed contrast.
+    const bool activity = count > 0 || buttons::any_down() ||
+                          snapshot.thermal != core::ThermalLevel::Normal || snapshot.power_warning;
+    const bool dim = dimmer.update(screen, activity, now_ms);
     const core::Settings& settings = menu.settings();
     display::configure(dim ? 0 : settings.brightness, settings.display_flip);  // Sent on change.
     display::show(frame, now_ms);

@@ -65,6 +65,15 @@ int poll(uint32_t now_ms, core::menu::Press (&out)[kButtons]) {
     return count;
 }
 
+bool any_down() {
+    for (const auto& debouncer : debouncers) {
+        if (debouncer.pressed()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool ok_down() { return down(board::kBoard.pins.btn_ok); }
 
 }  // namespace buttons

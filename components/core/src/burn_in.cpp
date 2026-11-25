@@ -34,15 +34,17 @@ void shift(Framebuffer& fb, int dx, int dy) {
     }
 }
 
-bool IdleDimmer::update(Screen screen, bool pressed, uint32_t now_ms) {
+bool IdleDimmer::update(Screen screen, bool activity, uint32_t now_ms) {
     const bool keeps_bright =
-        pressed || screen == Screen::Live || screen == Screen::Menu || screen == Screen::TooHot;
+        activity || screen == Screen::Live || screen == Screen::Menu || screen == Screen::TooHot;
     if (!started_ || keeps_bright) {
         started_ = true;
+        dimmed_ = false;
         active_ms_ = now_ms;
         return false;
     }
-    return now_ms - active_ms_ >= kDimAfterMs;
+    dimmed_ = dimmed_ || now_ms - active_ms_ >= kDimAfterMs;
+    return dimmed_;
 }
 
 }  // namespace core::ui

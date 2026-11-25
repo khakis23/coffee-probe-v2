@@ -156,4 +156,14 @@ TEST_CASE("idle dimmer: the millisecond clock wrapping doesn't matter") {
     CHECK_FALSE(d.update(ui::Screen::Probe, false, t0));
     CHECK_FALSE(d.update(ui::Screen::Probe, false, t0 + 60'000));
     CHECK(d.update(ui::Screen::Probe, false, t0 + ui::kDimAfterMs));
+    // Review of #20: still dim when the elapsed time wraps around 49.7 days later.
+    CHECK(d.update(ui::Screen::Probe, false, t0 + ui::kDimAfterMs + UINT32_MAX - 1000));
+}
+
+TEST_CASE("idle dimmer: a warning appearing on a dimmed screen brightens it") {
+    // Review of #20: the overheat banner must not appear at the lowest contrast.
+    ui::IdleDimmer d;
+    d.update(ui::Screen::Probe, false, 0);
+    REQUIRE(d.update(ui::Screen::Probe, false, ui::kDimAfterMs));
+    CHECK_FALSE(d.update(ui::Screen::Probe, true, ui::kDimAfterMs + 100));  // activity
 }

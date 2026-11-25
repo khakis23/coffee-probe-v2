@@ -16,8 +16,9 @@ struct BootInfo {
 
 // Call once, first thing in app_main: reads why the chip reset and updates the RTC record.
 BootInfo record_boot();
-// Whether a valid crash dump is saved in flash (read with `idf.py coredump-info`). Reads and
-// checksums the dump partition: call once at boot, not from a task loop.
+// Whether a crash dump is saved in flash (read with `idf.py coredump-info`). Reads only the
+// dump's size word: IDF already checksums the dump at boot (CONFIG_ESP_COREDUMP_CHECK_BOOT), and a
+// dump written in another IDF version's checksum format still counts. Call once at boot.
 bool crash_record_saved();
 
 // The power warning ended (kPowerCalmS without a dip): the next dip starts a fresh count.

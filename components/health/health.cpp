@@ -86,7 +86,11 @@ BootInfo record_boot() {
     return info;
 }
 
-bool crash_record_saved() { return esp_core_dump_image_check() == ESP_OK; }
+bool crash_record_saved() {
+    size_t address = 0;
+    size_t size = 0;
+    return esp_core_dump_image_get(&address, &size) == ESP_OK && size > 0;
+}
 
 void clear_brownouts() {
     current_record = core::cleared_brownouts(current_record);

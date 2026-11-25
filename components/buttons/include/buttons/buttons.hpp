@@ -15,6 +15,10 @@ esp_err_t init();
 inline constexpr int kButtons = 4;
 int poll(uint32_t now_ms, core::menu::Press (&out)[kButtons]);
 
+// Whether any button is down (debounced), for the screen's idle dimming: a press held between a
+// short and a long press produces no event but is still someone at the probe.
+bool any_down();
+
 // The OK button's raw level, for the power-on factory reset before the UI task starts.
 bool ok_down();
 
