@@ -14,7 +14,8 @@ now has the whole Artisan path:
 - it serves the temperature to Artisan over its own Wi-Fi network
 
 The small screen now has its MVP version too, and a draft setup guide is written. Ahead of plan,
-the after-MVP overheat protection and the settings menu (with factory reset) are written too.
+the after-MVP overheat protection, the settings menu (with factory reset) and crash/power-problem
+diagnostics are written too, and the staff quick-start card is drafted (`artisan/QUICKSTART.md`).
 **None of it has run on a wired board yet.** The wiring (#3) is still the thing that unblocks real testing. Tyler couldn't do it on
 Tuesday as planned, so all hardware checks are queued for when he can.
 
@@ -43,6 +44,7 @@ pending (their issues stay open until they pass). Next: the M4 minimal screen fo
 
 | PR | Ticket | What it does |
 |---|---|---|
+| #55 | #25 | Diagnostics page 2 (why it last restarted, restarts, crashes, power dips, memory); "Check USB cable/power" and lower Wi-Fi power after repeated power dips, clearing after 30 calm minutes; restarts itself if its reading or network job stops. Hardware checks go with #26 |
 | #52 | #23 | The settings menu: hold OK to open; probe chip, grounded tip, offset, Wi-Fi channel and power, brightness, flip, show password, diagnostics, factory reset. Holding OK at power-on for 5 s also resets. Buttons not wired yet: hardware test #53 (after the MVP) |
 | #51 | #24 | Overheat protection: "BOX TOO HOT: MOVE IT" banner when warm; "TOO HOT" and a 1-minute cooling sleep when critical. Needs a heat-gun test on the wired board (issue open) |
 | #50 | #22 | Settings that survive power cuts and can't break the probe: checked with a checksum, anything damaged falls back to defaults, one bad value doesn't wipe the others. Not used yet (the menu, #23) |
@@ -83,8 +85,13 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
      sleep; the probe wakes and resumes once cool
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
-3. Post-MVP, in milestone order: **#25** (crash and power-problem visibility: reset reason, brownout
-   counter, on the Diagnostics page), then #28. #26/#27 are hardware test sessions.
+3. All post-MVP code tickets are merged (#22–#25). What's left is hardware: #26 fault injection (needs
+   a test build that simulates a task hang; make it when that session is scheduled), #27 soak and heat,
+   then #28 (release; the quick-start card is drafted in `artisan/QUICKSTART.md`, `docs/flashing.md`
+   still to write).
+5. For the MVP tag on Saturday: `main` now also carries the post-MVP code (menu, overheat, diagnostics).
+   With no buttons wired the menu can't open; the BOOT button acts as BACK, which does nothing outside
+   the menu. If the first hardware run misbehaves, these are the newest suspects.
 4. Not done in #24: waking from the cooling sleep with a button (the buttons weren't in the firmware
    then). Add it once #53 shows the buttons work.
 
