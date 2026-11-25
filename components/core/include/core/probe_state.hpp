@@ -10,6 +10,10 @@
 
 namespace core {
 
+// A crash dump in flash (read with idf.py coredump-info). Damaged: one is there but its checksum
+// fails (power lost while it was written, or written by another IDF version's format).
+enum class CrashRecord : uint8_t { None, Saved, Damaged };
+
 struct ProbeState {
     // Sensor task
     DeciC bt{0};                       // valid only when fault == None && !stale
@@ -34,6 +38,7 @@ struct ProbeState {
     bool power_warning{false};     // "Check USB cable/power"; Wi-Fi power is lowered meanwhile.
     uint32_t min_free_heap{0};     // Lowest free heap since boot, bytes (0 = not measured yet).
     uint32_t min_stack_free{0};    // Smallest stack headroom of our tasks, bytes (0 = not yet).
+    CrashRecord crash_record{CrashRecord::None};
 };
 
 inline constexpr uint32_t kStaleMs = 2000;

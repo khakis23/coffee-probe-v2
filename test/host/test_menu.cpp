@@ -269,7 +269,11 @@ TEST_CASE("menu: diagnostics pages") {
     m.handle(kDown, 0);
     CHECK(m.diagnostics_page() == 1);
     m.handle(kDown, 0);
-    CHECK(m.diagnostics_page() == 0);
+    CHECK(m.diagnostics_page() == 2);
+    m.handle(kDown, 0);
+    CHECK(m.diagnostics_page() == 0);  // Wraps.
+    m.handle(kUp, 0);
+    CHECK(m.diagnostics_page() == 2);
     m.handle(kUp, 0);
     CHECK(m.diagnostics_page() == 1);
     CHECK(m.mode() == Mode::Diagnostics);
@@ -541,7 +545,7 @@ TEST_CASE("boot reset screen: countdown digits differ, done message differs") {
     CHECK(done != four);
 }
 
-TEST_CASE("diagnostics page 2: shows restarts, power dips and memory, '--' before measured") {
+TEST_CASE("diagnostics pages 2 and 3: restarts, crash record, address, memory") {
     Menu m{Settings{}};
     ui::Inputs in = live_inputs();
     in.menu = &m;
@@ -550,13 +554,30 @@ TEST_CASE("diagnostics page 2: shows restarts, power dips and memory, '--' befor
     Framebuffer page1;
     ui::render(in, page1);
     m.handle(kDown, 0);
-    Framebuffer unmeasured;
-    ui::render(in, unmeasured);
-    CHECK(unmeasured != page1);
+    Framebuffer page2;
+    ui::render(in, page2);
+    CHECK(page2 != page1);
     in.state.reset_cause = core::ResetCause::Brownout;
     in.state.boots = 4;
     in.state.brownouts = 2;
     in.state.crashes = 1;
+    Framebuffer page2_counts;
+    ui::render(in, page2_counts);
+    CHECK(page2_counts != page2);
+    in.state.crash_record = core::CrashRecord::Saved;
+    Framebuffer page2_record;
+    ui::render(in, page2_record);
+    CHECK(page2_record != page2_counts);
+    in.state.crash_record = core::CrashRecord::Damaged;
+    Framebuffer page2_damaged;
+    ui::render(in, page2_damaged);
+    CHECK(page2_damaged != page2_record);
+
+    m.handle(kDown, 0);
+    Framebuffer unmeasured;
+    ui::render(in, unmeasured);
+    CHECK(unmeasured != page2_record);
+    in.address = "192.168.4.1";
     in.state.min_free_heap = 150 * 1024;
     in.state.min_stack_free = 1200;
     Framebuffer measured;

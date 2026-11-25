@@ -9,6 +9,7 @@
 #include "board/board.hpp"
 #include "buttons/buttons.hpp"
 #include "core/boot_record.hpp"
+#include "core/burn_in.hpp"
 #include "core/menu.hpp"
 #include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
@@ -205,7 +206,7 @@ void carry_out(core::menu::Action action, const core::menu::Menu& menu) {
             } else {
                 ESP_LOGI(kTag, "settings saved");
             }
-            display::configure(s.brightness, s.display_flip);
+            // Brightness and flip reach the panel from ui_step on the next frame.
             offset_deci_f.store(s.offset_deci_f, std::memory_order_relaxed);
             return;
         }
@@ -224,6 +225,7 @@ void carry_out(core::menu::Action action, const core::menu::Menu& menu) {
 
 void ui_step() {
     static core::menu::Menu menu{boot_settings};  // Built on the first step, after start_tasks().
+    static core::ui::IdleDimmer dimmer;
     static core::Framebuffer frame;
     static core::ui::Inputs in;
     static uint32_t last_render_ms = 0;
@@ -254,7 +256,22 @@ void ui_step() {
     in.show_password = menu.settings().show_password;
     in.version = esp_app_get_description()->version;
     in.menu = &menu;
+    in.address = net::kApIp;
     core::ui::render(in, frame);
+
+    // Burn-in protection (#20): move the picture a pixel every few minutes, dim an idle screen.
+    const core::ui::Screen screen = core::ui::choose_screen(in);
+    if (core::ui::shifts(screen)) {
+        const core::ui::Offset offset = core::ui::burn_in_offset(now_ms);
+        core::ui::shift(frame, offset.dx, offset.dy);
+    }
+    // A warning on screen counts as activity, so the overheat banner or the power warning never
+    // appears at the dimmed contrast.
+    const bool activity = count > 0 || buttons::any_down() ||
+                          snapshot.thermal != core::ThermalLevel::Normal || snapshot.power_warning;
+    const bool dim = dimmer.update(screen, activity, now_ms);
+    const core::Settings& settings = menu.settings();
+    display::configure(dim ? 0 : settings.brightness, settings.display_flip);  // Sent on change.
     display::show(frame, now_ms);
     last_render_ms = now_ms;
     rendered = true;
