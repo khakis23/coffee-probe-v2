@@ -3,7 +3,7 @@
 *The handoff between sessions. Agents update it at the end of every session; Tyler can read it any
 time to see where things stand.*
 
-**Last updated:** 2026-11-24 (Tuesday evening)
+**Last updated:** 2026-11-25 (Wednesday)
 
 ## In plain English
 
@@ -39,6 +39,12 @@ the last three days.
 
 **M0–M2 code merged; M3 (Wi-Fi + Modbus) code merged.** Hardware checks for #12, #14 and #16 are
 pending (their issues stay open until they pass). Next: the M4 minimal screen for the MVP.
+
+## Merged on 2026-11-25
+
+| PR | Ticket | What it does |
+|---|---|---|
+| this | #2, #16, #26, #28 | Build only on the two supported IDF versions; v6 builds now required in CI. Fault-test builds for #26 (`scripts/flash.sh --fault hang/crash`), refused by the guards everywhere else. `scripts/release.sh` (one file per board), `docs/flashing.md`, `CHANGELOG.md`. Diagnostics shows Artisan connections |
 
 ## Merged on 2026-11-24
 
@@ -87,10 +93,12 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
      sleep; the probe wakes and resumes once cool
 2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
    screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
-3. All code that can be written without the board is merged (#20 burn-in, #22–#25). What's left is hardware: #26 fault injection (needs
-   a test build that simulates a task hang; make it when that session is scheduled), #27 soak and heat,
-   then #28 (release; the quick-start card is drafted in `artisan/QUICKSTART.md`, `docs/flashing.md`
-   still to write).
+3. All code that can be written without the board is merged. What's left is hardware: #26 fault
+   injection (fault-test builds ready: `scripts/flash.sh --fault hang|crash`), #27 soak and heat (then
+   tune the thermal thresholds), then #28 (release: `scripts/release.sh`, attach the files and
+   `CHANGELOG.md` to the GitHub release; check `docs/flashing.md` and the web flasher steps the first time).
+   After #3: delete `components/bringup` once its analysis is done (firmware rule F2), and pick the
+   shipping IDF version (#2).
 5. For the MVP tag on Saturday: `main` now also carries the post-MVP code (menu, overheat, diagnostics).
    With no buttons wired the menu can't open; the BOOT button acts as BACK, which does nothing outside
    the menu. If the first hardware run misbehaves, these are the newest suspects.
