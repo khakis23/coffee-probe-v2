@@ -34,7 +34,9 @@ esac
 
 version="$(git -C "$ROOT" describe --tags --always --dirty)"
 # Untracked files count too: e.g. a stray version.txt would change the version the firmware reports.
-if [ -n "$(git -C "$ROOT" status --porcelain)" ] && ! $allow_dirty; then
+# ESP-IDF also reads a version.txt even if .gitignore hides it, so check for it by name.
+if { [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ] ||
+     [ -e "$ROOT/version.txt" ]; } && ! $allow_dirty; then
     echo "Uncommitted or untracked files: a release must be built from a clean commit."
     echo "(--allow-dirty to test the script.)"
     exit 2
@@ -47,7 +49,8 @@ idf_env() {   # idf_env <command string> [args...]: run in a clean environment w
 }
 # The files are labelled with the IDF version, so make sure the install really is that version.
 actual="$(idf_env 'idf.py --version' 2>/dev/null | tail -1)"
-if [[ "$actual" != "ESP-IDF $idf" && "$actual" != "ESP-IDF $idf-"* ]]; then
+# Exact: not a release candidate, not commits after the tag, not a modified (-dirty) checkout.
+if [ "$actual" != "ESP-IDF $idf" ]; then
     echo "Expected ESP-IDF $idf at $idf_path, found: ${actual:-nothing}"
     exit 2
 fi

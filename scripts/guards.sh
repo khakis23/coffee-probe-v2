@@ -125,7 +125,8 @@ report "CONFIG_PROBE_BRINGUP_DIAG enabled in a committed sdkconfig.defaults file
 # 5b. Fault-test builds freeze or crash on purpose (#26): committed defaults never mention a fault
 # mode (any CONFIG_PROBE_FAULT_TEST_ symbol other than the normal _NONE).
 matches="$(scan -nE "^[[:space:]]*#?[[:space:]]*CONFIG_PROBE_FAULT_TEST_[A-Z0-9_]*" sdkconfig.defaults*)" || exit 2
-matches="$(scan -vE "CONFIG_PROBE_FAULT_TEST_NONE([^A-Z0-9_]|$)" <<<"$matches")" || exit 2
+# Exempt only lines whose setting is _NONE itself (not a fault line with _NONE in a comment).
+matches="$(scan -vE "^[^:]*:[0-9]+:[[:space:]]*#?[[:space:]]*CONFIG_PROBE_FAULT_TEST_NONE([^A-Z0-9_]|$)" <<<"$matches")" || exit 2
 report "CONFIG_PROBE_FAULT_TEST_* fault mode set in a committed sdkconfig.defaults file" "$matches"
 
 # 6. Board defaults must preserve the required reliability settings.
