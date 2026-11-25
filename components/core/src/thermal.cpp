@@ -27,24 +27,40 @@ ThermalLevel ThermalSensorPolicy::desired(DeciC reading) const {
                        : (warn_on ? ThermalLevel::Warn : ThermalLevel::Normal);
 }
 
+namespace {
+
+uint8_t count_if(bool condition, uint8_t count) {
+    if (!condition) {
+        return 0;
+    }
+    return count < kThermalConfirmSamples ? static_cast<uint8_t>(count + 1) : count;
+}
+
+}  // namespace
+
 ThermalLevel ThermalSensorPolicy::update(std::optional<DeciC> reading) {
     if (!reading.has_value()) {
-        pending_count_ = 0;
         return level_;
     }
     const ThermalLevel want = desired(*reading);
-    if (want == level_) {
-        pending_count_ = 0;
-        return level_;
+    warn_or_above_ = count_if(want >= ThermalLevel::Warn, warn_or_above_);
+    critical_ = count_if(want == ThermalLevel::Critical, critical_);
+    if (want < level_) {
+        below_max_ = below_ == 0 ? want : std::max(below_max_, want);
+        below_ = count_if(true, below_);
+    } else {
+        below_ = 0;
     }
-    // A change of direction (e.g. Warn pending, then Critical) starts counting again.
-    if (pending_count_ == 0 || want != pending_) {
-        pending_ = want;
-        pending_count_ = 0;
-    }
-    if (++pending_count_ >= kThermalConfirmSamples) {
-        level_ = want;
-        pending_count_ = 0;
+
+    if (critical_ >= kThermalConfirmSamples && level_ < ThermalLevel::Critical) {
+        level_ = ThermalLevel::Critical;
+        below_ = 0;
+    } else if (warn_or_above_ >= kThermalConfirmSamples && level_ < ThermalLevel::Warn) {
+        level_ = ThermalLevel::Warn;
+        below_ = 0;
+    } else if (below_ >= kThermalConfirmSamples) {
+        level_ = below_max_;
+        below_ = 0;
     }
     return level_;
 }

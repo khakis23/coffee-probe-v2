@@ -34,18 +34,20 @@ TEST_CASE("A level rises only after 5 consecutive samples at or above the thresh
     CHECK(feed(below, DeciC{499}, 20) == ThermalLevel::Normal);  // 49.9 C never warns.
 }
 
-TEST_CASE("One cool sample restarts the count; so does a missing reading") {
+TEST_CASE("One cool sample restarts the count; a missing reading only pauses it") {
     auto p = ambient();
     feed(p, DeciC{510}, 4);
     p.update(DeciC{400});  // 40.0 C: back below, the count restarts.
     CHECK(feed(p, DeciC{510}, 4) == ThermalLevel::Normal);
     CHECK(p.update(DeciC{510}) == ThermalLevel::Warn);  // 5 consecutive again.
 
+    // Review of #24: a dropout every few seconds must not hold off a real overheat.
     auto gap = ambient();
-    feed(gap, DeciC{510}, 4);
-    gap.update(std::nullopt);  // No cold-junction reading this second.
-    CHECK(feed(gap, DeciC{510}, 4) == ThermalLevel::Normal);
-    CHECK(gap.update(DeciC{510}) == ThermalLevel::Warn);
+    for (int i = 0; i < 4; ++i) {
+        CHECK(gap.update(DeciC{660}) == ThermalLevel::Normal);
+        CHECK(gap.update(std::nullopt) == ThermalLevel::Normal);  // No reading this second.
+    }
+    CHECK(gap.update(DeciC{660}) == ThermalLevel::Critical);  // The 5th real reading.
 }
 
 TEST_CASE("Falling needs 5 samples below threshold minus hysteresis") {
@@ -71,13 +73,49 @@ TEST_CASE("Normal can go straight to Critical and back down step by step") {
     CHECK(feed(p, DeciC{300}, 5) == ThermalLevel::Normal);
 }
 
-TEST_CASE("A change of direction while a change is pending restarts the count") {
+TEST_CASE("Readings bouncing between Warn and Critical confirm Warn, then Critical") {
+    // Review of #24: 64.9 / 65.1 C alternating must not leave the level at Normal.
     auto p = ambient();
-    feed(p, DeciC{550}, 3);  // Warn pending, 3 of 5.
-    // 66.0 C: now Critical is wanted. The count restarts at 1, so 4 more are needed after this.
-    CHECK(p.update(DeciC{660}) == ThermalLevel::Normal);
-    CHECK(feed(p, DeciC{660}, 3) == ThermalLevel::Normal);  // 4 of 5.
-    CHECK(p.update(DeciC{660}) == ThermalLevel::Critical);  // 5 of 5.
+    for (int i = 0; i < 2; ++i) {
+        CHECK(p.update(DeciC{649}) == ThermalLevel::Normal);
+        CHECK(p.update(DeciC{651}) == ThermalLevel::Normal);
+    }
+    CHECK(p.update(DeciC{649}) == ThermalLevel::Warn);  // 5 readings at Warn or above.
+    // Critical still needs 5 consecutive readings at or above 65.0 C.
+    CHECK(feed(p, DeciC{651}, 4) == ThermalLevel::Warn);
+    p.update(DeciC{649});
+    CHECK(feed(p, DeciC{651}, 4) == ThermalLevel::Warn);
+    CHECK(p.update(DeciC{651}) == ThermalLevel::Critical);
+}
+
+TEST_CASE("A rise from Warn-wanted to Critical-wanted keeps the Warn count") {
+    auto p = ambient();
+    feed(p, DeciC{550}, 3);                                  // Warn wanted, 3 of 5.
+    CHECK(p.update(DeciC{660}) == ThermalLevel::Normal);     // 4 at Warn or above.
+    CHECK(p.update(DeciC{660}) == ThermalLevel::Warn);       // 5: Warn now.
+    CHECK(feed(p, DeciC{660}, 2) == ThermalLevel::Warn);     // 4 at Critical.
+    CHECK(p.update(DeciC{660}) == ThermalLevel::Critical);   // 5 at Critical.
+}
+
+TEST_CASE("Falling with mixed readings drops to the highest level they asked for") {
+    auto p = ambient();
+    feed(p, DeciC{700}, 5);
+    REQUIRE(p.level() == ThermalLevel::Critical);
+    // Below 60.0 C (critical - hysteresis), alternating Warn-range and cool readings.
+    for (int i = 0; i < 2; ++i) {
+        CHECK(p.update(DeciC{590}) == ThermalLevel::Critical);
+        CHECK(p.update(DeciC{300}) == ThermalLevel::Critical);
+    }
+    CHECK(p.update(DeciC{300}) == ThermalLevel::Warn);  // Not straight to Normal.
+    CHECK(feed(p, DeciC{300}, 5) == ThermalLevel::Normal);
+
+    // A missing reading pauses a fall too.
+    auto q = ambient();
+    feed(q, DeciC{550}, 5);
+    REQUIRE(q.level() == ThermalLevel::Warn);
+    feed(q, DeciC{300}, 4);
+    q.update(std::nullopt);
+    CHECK(q.update(DeciC{300}) == ThermalLevel::Normal);
 }
 
 TEST_CASE("The overall level is the worse sensor; the die sensor alone covers a MAX6675") {

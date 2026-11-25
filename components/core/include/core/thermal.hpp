@@ -25,10 +25,16 @@ inline constexpr ThermalThresholds kDieThresholds{{900}, {1050}, {50}};
 inline constexpr uint8_t kThermalConfirmSamples = 5;
 
 // One sensor's level, with hysteresis and confirmation. Pure: time is the sample count.
+//
+// Rising: a level is entered after kThermalConfirmSamples consecutive readings at or above it,
+// counted per level, so readings that bounce between Warn and Critical still confirm Warn.
+// Falling: after kThermalConfirmSamples consecutive readings below the current level (with
+// hysteresis), the level drops to the highest level any of those readings asked for.
 class ThermalSensorPolicy {
    public:
     explicit constexpr ThermalSensorPolicy(const ThermalThresholds& t) : thresholds_(t) {}
-    // A missing reading (no chip output, a probe fault) changes nothing and restarts the count.
+    // A missing reading (a bus error, no die sensor) is skipped: it neither counts nor
+    // restarts a count, so occasional dropouts can't hold off a real overheat.
     ThermalLevel update(std::optional<DeciC> reading);
     ThermalLevel level() const { return level_; }
 
@@ -37,8 +43,10 @@ class ThermalSensorPolicy {
 
     ThermalThresholds thresholds_;
     ThermalLevel level_{ThermalLevel::Normal};
-    ThermalLevel pending_{ThermalLevel::Normal};
-    uint8_t pending_count_{0};
+    uint8_t warn_or_above_{0};  // Consecutive readings asking for at least Warn.
+    uint8_t critical_{0};       // Consecutive readings asking for Critical.
+    uint8_t below_{0};          // Consecutive readings asking for less than level_.
+    ThermalLevel below_max_{ThermalLevel::Normal};  // The highest level those asked for.
 };
 
 // Both sensors; the overall level is the worse of the two.
