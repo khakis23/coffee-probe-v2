@@ -4,6 +4,10 @@
 #include <cstdlib>
 
 #include "board/board.hpp"
+#include "buttons/buttons.hpp"
+#include "core/menu.hpp"
+#include "core/ui.hpp"
+#include "display/display.hpp"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
@@ -19,6 +23,7 @@
 #include "state/state_store.hpp"
 #include "storage/storage.hpp"
 #include "tasks.hpp"
+#include "thermocouple/thermocouple.hpp"
 
 #if CONFIG_PROBE_BRINGUP_DIAG
 #include "bringup/bringup.hpp"
@@ -57,6 +62,39 @@ void log_chip_info() {
     ESP_LOGI(kTag, "Reset reason: %d", static_cast<int>(esp_reset_reason()));
 }
 
+// OK held from power-on for 5 s resets the settings (#23), with a countdown on the screen.
+// Returns at once when OK isn't down, so a normal boot isn't slowed. Runs before the tasks
+// start, so nothing else uses the buttons or the display yet. Bounded: the hold resolves
+// within kBootResetHoldMs, and every display call has its own time budget.
+bool factory_reset_held() {
+    if (const esp_err_t error = buttons::init(); error != ESP_OK) {
+        ESP_LOGW(kTag, "Button setup failed: %s", esp_err_to_name(error));
+        return false;
+    }
+    if (!buttons::ok_down()) {
+        return false;
+    }
+    ESP_LOGW(kTag, "OK held at power-on: factory reset in 5 s unless released");
+    (void)display::init();  // Logs its own errors; the countdown is a courtesy.
+    core::menu::BootResetHold hold;
+    core::Framebuffer frame;
+    TickType_t wake = xTaskGetTickCount();
+    while (true) {
+        const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
+        const auto result = hold.update(buttons::ok_down(), now_ms);
+        if (result == core::menu::BootHold::Released) {
+            ESP_LOGI(kTag, "OK released: no factory reset");
+            return false;
+        }
+        core::ui::render_boot_reset(result, hold.seconds_left(), frame);
+        display::show(frame, now_ms);
+        if (result == core::menu::BootHold::Reset) {
+            return true;
+        }
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(20));
+    }
+}
+
 }  // namespace
 
 extern "C" void app_main() {
@@ -76,24 +114,50 @@ extern "C" void app_main() {
     }
     ESP_ERROR_CHECK(nvs_error);
 
-    const auto settings = storage::load();
-    if (settings.status == core::SettingsStatus::Ok) {
+    auto loaded = storage::load();
+    if (loaded.status == core::SettingsStatus::Ok) {
         ESP_LOGI(kTag, "settings loaded");
     } else {
-        ESP_LOGW(kTag, "settings %s, repaired fields: %u%s", settings_status_name(settings.status),
-                 static_cast<unsigned>(settings.repaired_fields),
-                 settings.status == core::SettingsStatus::Repaired ? "" : ", using defaults");
+        ESP_LOGW(kTag, "settings %s, repaired fields: %u%s", settings_status_name(loaded.status),
+                 static_cast<unsigned>(loaded.repaired_fields),
+                 loaded.status == core::SettingsStatus::Repaired ? "" : ", using defaults");
     }
+    if (factory_reset_held()) {
+        const esp_err_t error = storage::erase();
+        if (error == ESP_OK) {
+            ESP_LOGW(kTag, "factory reset: settings erased");
+        } else {
+            ESP_LOGE(kTag, "factory reset: erase failed (%s), using defaults this time",
+                     esp_err_to_name(error));
+        }
+        loaded = {};
+    }
+    core::Settings settings = loaded.settings;
+    if (loaded.status == core::SettingsStatus::Ok ||
+        loaded.status == core::SettingsStatus::Repaired) {
+        thermocouple::configure(settings.tc_chip, settings.grounded_probe);
+    } else {
+        // Nothing saved (new board, factory reset, damaged): the build options are the factory
+        // default for the converter and grounded mode, so the menu shows what is in use.
+        settings.tc_chip = thermocouple::chip();
+        settings.grounded_probe = thermocouple::grounded_probe();
+    }
+    ESP_LOGI(kTag, "thermocouple %s%s, offset %d tenths F", thermocouple::chip_name(),
+             thermocouple::grounded_probe() ? ", grounded" : "",
+             static_cast<int>(settings.offset_deci_f));
     if (!state::init()) {
         ESP_LOGE(kTag, "Unable to initialize shared probe state");
         // The tasks cannot run without shared state. Panic reboots the probe to retry setup.
         std::abort();
     }
-    ESP_ERROR_CHECK(net::start_softap());
-    ESP_LOGI(kTag, "Wi-Fi SSID %s, password (see Artisan guide), IP %s, channel %u", net::ssid(),
-             net::kApIp, static_cast<unsigned>(net::kChannel));
+    const int8_t tx_power = core::effective_tx_power_qdbm(settings.tx_power_qdbm,
+                                                          board::kBoard.wifi_max_tx_power_qdbm);
+    ESP_ERROR_CHECK(net::start_softap(settings.wifi_channel, tx_power));
+    ESP_LOGI(kTag, "Wi-Fi SSID %s, password (see Artisan guide), IP %s, channel %u, %d.%02d dBm",
+             net::ssid(), net::kApIp, static_cast<unsigned>(settings.wifi_channel),
+             tx_power / 4, (tx_power % 4) * 25);
 
-    start_tasks();
+    start_tasks(settings);
     log_stack_high_water();
 
     core::ProbeState snapshot{};

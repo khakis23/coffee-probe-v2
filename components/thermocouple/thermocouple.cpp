@@ -34,19 +34,27 @@ constexpr int64_t kStuckRestartUs = 5'000'000;
 // worst-case conversion apart (datasheets: MAX6675 0.22 s, MAX31855 0.1 s), plus 10 ms margin.
 // The sensor task's 250 ms period normally guarantees this; a late read followed by an
 // on-time one does not, so the driver enforces it.
+constexpr int64_t kMax6675ReadIntervalUs = 230'000;
+constexpr int64_t kMax31855ReadIntervalUs = 110'000;
+constexpr int kMaxFrameBytes = 4;
+
+// Set by configure() before the sensor task starts; the build options are the factory default.
 #if CONFIG_PROBE_TC_MAX6675
-constexpr int kFrameBits = 16;
-constexpr int64_t kMinReadIntervalUs = 230'000;
+core::TcChip configured_chip = core::TcChip::Max6675;
 #else
-constexpr int kFrameBits = 32;
-constexpr int64_t kMinReadIntervalUs = 110'000;
-constexpr bool kGroundedProbe =
+core::TcChip configured_chip = core::TcChip::Max31855;
+#endif
 #if CONFIG_PROBE_TC_GROUNDED
-    true;
+bool configured_grounded = true;
 #else
-    false;
+bool configured_grounded = false;
 #endif
-#endif
+
+int frame_bits() { return configured_chip == core::TcChip::Max6675 ? 16 : 32; }
+int64_t min_read_interval_us() {
+    return configured_chip == core::TcChip::Max6675 ? kMax6675ReadIntervalUs
+                                                    : kMax31855ReadIntervalUs;
+}
 
 // The sensor task is the only caller. The SPI driver may retain the descriptor
 // and its inline RX buffer after a result timeout.
@@ -73,6 +81,15 @@ core::TcReading spi_error(const char* operation, esp_err_t error) {
 
 }  // namespace
 
+void configure(core::TcChip chip, bool grounded_probe) {
+    configured_chip = chip;
+    configured_grounded = grounded_probe;
+}
+
+core::TcChip chip() { return configured_chip; }
+
+bool grounded_probe() { return configured_grounded; }
+
 esp_err_t init() {
     if (device != nullptr) {
         return ESP_OK;
@@ -87,7 +104,7 @@ esp_err_t init() {
         bus_config.sclk_io_num = pins.tc_sck;
         bus_config.quadwp_io_num = -1;
         bus_config.quadhd_io_num = -1;
-        bus_config.max_transfer_sz = kFrameBits / 8;
+        bus_config.max_transfer_sz = kMaxFrameBytes;  // Either chip.
         const esp_err_t error = spi_bus_initialize(SPI2_HOST, &bus_config, SPI_DMA_DISABLED);
         if (error != ESP_OK) {
             return error;
@@ -133,7 +150,8 @@ core::TcReading read() {
     }
 
     if (have_frame) {
-        const int64_t remaining_us = kMinReadIntervalUs - (esp_timer_get_time() - last_frame_us);
+        const int64_t remaining_us =
+            min_read_interval_us() - (esp_timer_get_time() - last_frame_us);
         if (remaining_us > 0) {
             // A tick delay can end up to one tick early, so add one. At most ~240 ms.
             vTaskDelay(pdMS_TO_TICKS(remaining_us / 1000) + 1);
@@ -142,8 +160,8 @@ core::TcReading read() {
 
     transaction = {};
     transaction.flags = SPI_TRANS_USE_RXDATA;
-    transaction.length = kFrameBits;
-    transaction.rxlength = kFrameBits;
+    transaction.length = frame_bits();
+    transaction.rxlength = frame_bits();
     esp_err_t error = spi_device_queue_trans(device, &transaction, kQueueWait);
     if (error != ESP_OK) {
         return spi_error("SPI queue", error);
@@ -160,23 +178,18 @@ core::TcReading read() {
 
     // The most significant byte arrives first on both converters.
     const auto& rx = completed->rx_data;
-#if CONFIG_PROBE_TC_MAX6675
-    const auto frame = static_cast<uint16_t>((static_cast<uint16_t>(rx[0]) << 8) | rx[1]);
-    return core::decode_max6675(frame);
-#else
+    if (configured_chip == core::TcChip::Max6675) {
+        const auto frame = static_cast<uint16_t>((static_cast<uint16_t>(rx[0]) << 8) | rx[1]);
+        return core::decode_max6675(frame);
+    }
     const uint32_t frame = (static_cast<uint32_t>(rx[0]) << 24) |
                            (static_cast<uint32_t>(rx[1]) << 16) |
                            (static_cast<uint32_t>(rx[2]) << 8) | rx[3];
-    return core::decode_max31855(frame, kGroundedProbe);
-#endif
+    return core::decode_max31855(frame, configured_grounded);
 }
 
 const char* chip_name() {
-#if CONFIG_PROBE_TC_MAX6675
-    return "MAX6675";
-#else
-    return "MAX31855";
-#endif
+    return configured_chip == core::TcChip::Max6675 ? "MAX6675" : "MAX31855";
 }
 
 }  // namespace thermocouple

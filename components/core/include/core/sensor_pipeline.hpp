@@ -34,6 +34,9 @@ class SensorPipeline {
     explicit SensorPipeline(const SensorConfig& cfg);
     void feed(const TcReading& reading, uint32_t now_ms);
     SensorOutput output(uint32_t now_ms) const;
+    // A changed calibration offset (settings menu) applies from the next sample; the median
+    // filter carries the step through within two samples.
+    void set_calibration_offset(DeciC offset) { config_.calibration_offset = offset; }
 
    private:
     // True while a valid output is being published: no reported fault and not stale.

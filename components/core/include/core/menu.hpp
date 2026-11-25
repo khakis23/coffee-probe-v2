@@ -58,9 +58,7 @@ inline constexpr int16_t kOffsetLimit = 100;  // ±10.0 °F, the range settings 
 // Wi-Fi power choices in quarter-dBm; 0 lets the board choose. The net driver still caps the
 // value at the board's limit, so "High" on a board with a weak regulator stays safe.
 inline constexpr uint8_t kTxPowerChoices[] = {0, 32, 52, 78};  // Auto, 8, 13, 19.5 dBm.
-inline constexpr uint8_t kTxPowerChoiceCount = 4;
 inline constexpr uint8_t kChannelChoices[] = {1, 6, 11};
-inline constexpr uint8_t kChannelChoiceCount = 3;
 
 // True for settings that only take effect after a restart (they configure Wi-Fi or the
 // thermocouple driver at boot).

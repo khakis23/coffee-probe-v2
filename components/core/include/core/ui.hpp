@@ -45,4 +45,7 @@ Link link_status(const Inputs& in);
 // Renders the whole frame for the current inputs. Pure: same inputs, same pixels.
 void render(const Inputs& in, Framebuffer& fb);
 
+// The power-on factory reset (OK held from boot): a countdown while held, then a done message.
+void render_boot_reset(menu::BootHold hold, uint8_t seconds_left, Framebuffer& fb);
+
 }  // namespace core::ui

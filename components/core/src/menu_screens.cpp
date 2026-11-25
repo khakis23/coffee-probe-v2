@@ -162,3 +162,23 @@ void draw_menu(const Inputs& in, Framebuffer& fb) {
 }
 
 }  // namespace core::ui::detail
+
+namespace core::ui {
+
+void render_boot_reset(menu::BootHold hold, uint8_t seconds_left, Framebuffer& fb) {
+    using detail::centered;
+    fb.clear();
+    fb.text(0, 0, "FACTORY RESET");
+    fb.hline(0, 9, Framebuffer::kWidth);
+    if (hold == menu::BootHold::Reset) {
+        centered(fb, 22, "Settings reset");
+        centered(fb, 34, "Starting...");
+        return;
+    }
+    centered(fb, 13, "Keep holding OK");
+    const char digit[2] = {static_cast<char>('0' + std::min<int>(seconds_left, 9)), '\0'};
+    centered(fb, 25, std::string_view{digit, 1}, {}, 3);  // Rows 25..45.
+    centered(fb, 54, "Let go to cancel");
+}
+
+}  // namespace core::ui

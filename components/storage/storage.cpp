@@ -74,4 +74,21 @@ esp_err_t save(const core::Settings& settings) {
     return error;
 }
 
+esp_err_t erase() {
+    nvs_handle_t handle{};
+    esp_err_t error = nvs_open(kNamespace, NVS_READWRITE, &handle);
+    if (error != ESP_OK) {
+        return error;
+    }
+    error = nvs_erase_key(handle, kKey);
+    if (error == ESP_ERR_NVS_NOT_FOUND) {
+        error = ESP_OK;  // Nothing saved yet: already at factory settings.
+    }
+    if (error == ESP_OK) {
+        error = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    return error;
+}
+
 }  // namespace storage

@@ -505,3 +505,14 @@ TEST_CASE("top bar: password hidden when the setting is off") {
     ui::render(in, shown);
     CHECK(shown != password_phase);
 }
+
+TEST_CASE("boot reset screen: countdown digits differ, done message differs") {
+    Framebuffer five;
+    Framebuffer four;
+    Framebuffer done;
+    ui::render_boot_reset(menu::BootHold::Holding, 5, five);
+    ui::render_boot_reset(menu::BootHold::Holding, 4, four);
+    ui::render_boot_reset(menu::BootHold::Reset, 0, done);
+    CHECK(five != four);
+    CHECK(done != four);
+}
