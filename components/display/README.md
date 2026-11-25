@@ -2,10 +2,11 @@
 
 The OLED driver: SSD1306 (0.96") or SH1106 (1.3") over `i2c_master` (D-011). What to draw is decided
 in `core` (`core/framebuffer.hpp`, `core/ui.hpp`, host-tested); the `ui` task in `main/tasks.cpp`
-renders a frame every 100 ms and hands it to `display::show()`. See
+renders a frame every 100 ms (and at once after a button press) and hands it to `display::show()`. See
 [docs/architecture.md](../../docs/architecture.md) → *Screens (MVP)*.
 
-- API: `init()` (safe to retry), `show(frame, now_ms)` (sends only changed pages), `ok()`.
+- API: `init()` (safe to retry), `show(frame, now_ms)` (sends only changed pages), `ok()`,
+  `configure(brightness, flip)` (settings; a change is resent with a full redraw on the next `show()`).
 - Controller: Kconfig choice (`menuconfig` → CoffeeProbe display), default SSD1306, until #3 identifies
   the panel and settings exist (D-008). Address 0x3C or 0x3D, probed at init.
 - Reliability: 400 kHz, every transfer has a 50 ms timeout and each `show()` call a 40 ms send budget;
