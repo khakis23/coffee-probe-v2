@@ -1,12 +1,15 @@
-// health: placeholder so the component layout builds. the M6 Health tickets designs the real API.
-
 #pragma once
 
+#include <optional>
+
+#include "core/temperature.hpp"
 #include "esp_err.h"
 
 namespace health {
 
-// Does nothing yet; returns ESP_OK.
+// Called by the health task. Safe to call again after success or failure.
 esp_err_t init();
+std::optional<core::DeciC> read_die();
+[[noreturn]] void enter_protective_sleep();
 
 }  // namespace health

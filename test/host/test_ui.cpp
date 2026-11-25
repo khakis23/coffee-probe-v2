@@ -263,3 +263,35 @@ TEST_CASE("Rendering is pure: the same inputs give the same frame") {
     ui::render(in, dirty);  // Starts by clearing: nothing from the old frame survives.
     CHECK(dirty == draw(in));
 }
+
+TEST_CASE("Overheat: Warn is a banner above the live number, Critical takes the whole screen") {
+    auto warn = live(2131);
+    warn.state.thermal = core::ThermalLevel::Warn;
+    CHECK(ui::choose_screen(warn) == ui::Screen::Live);
+    const auto banner = draw(warn);
+    CHECK(read_number(banner) == "416");  // The roast continues: the temperature stays.
+    // The bar is lit (inverted): most of row 0 is on, unlike normal text.
+    int lit = 0;
+    for (int x = 0; x < 128; ++x) lit += banner.pixel(x, 0) ? 1 : 0;
+    CHECK(lit > 100);
+    CHECK(banner != draw(live(2131)));
+
+    auto critical = live(2131);
+    critical.state.thermal = core::ThermalLevel::Critical;
+    CHECK(ui::choose_screen(critical) == ui::Screen::TooHot);
+    // Critical beats a probe fault and start-up too.
+    critical.state.fault = TcFault::Open;
+    CHECK(ui::choose_screen(critical) == ui::Screen::TooHot);
+    ui::Inputs boot;
+    boot.state.thermal = core::ThermalLevel::Critical;
+    boot.now_ms = 100;
+    CHECK(ui::choose_screen(boot) == ui::Screen::TooHot);
+    // No temperature and no top bar on the critical screen: the divider row is not a full line.
+    const auto hot = draw(critical);
+    auto other = critical;
+    other.state.bt = DeciC{1000};
+    CHECK(hot == draw(other));
+    int divider = 0;
+    for (int x = 0; x < 128; ++x) divider += hot.pixel(x, 9) ? 1 : 0;
+    CHECK(divider < 128);
+}

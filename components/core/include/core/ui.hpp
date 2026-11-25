@@ -20,6 +20,7 @@ enum class Screen : uint8_t {
     Starting,  // First moments after boot, before the first reading could exist.
     Live,      // A valid reading: big degrees F.
     Probe,     // No valid reading after start-up: "PROBE?" and the likely cause.
+    TooHot,    // Thermal Critical: shown just before the protective sleep. Beats everything.
 };
 
 // What the one-line top bar says.

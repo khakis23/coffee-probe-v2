@@ -4,6 +4,7 @@
 #include <optional>
 
 #include "core/temperature.hpp"
+#include "core/thermal.hpp"
 #include "core/thermocouple.hpp"
 
 namespace core {
@@ -19,6 +20,9 @@ struct ProbeState {
     uint8_t wifi_clients{0};
     uint8_t modbus_clients{0};
     uint32_t modbus_last_request_ms{0};
+    // Health task
+    std::optional<DeciC> die{};                  // C3 die temperature; empty if the sensor failed
+    ThermalLevel thermal{ThermalLevel::Normal};  // core::ThermalPolicy over cold junction + die
     // System
     uint32_t uptime_s{0};
 };

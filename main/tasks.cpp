@@ -1,10 +1,13 @@
 #include "tasks.hpp"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <optional>
 
 #include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
+#include "core/thermal.hpp"
 #include "core/ui.hpp"
 #include "display/display.hpp"
 #include "esp_app_desc.h"
@@ -14,6 +17,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "health/health.hpp"
 #include "net/modbus_server.hpp"
 #include "net/net.hpp"
 #include "net/softap_config.hpp"
@@ -167,7 +171,73 @@ void ui_step() {
     display::show(frame, now_ms);
 }
 
-void health_step() {}  // Thermal protection starts in #24.
+void health_init() {
+    const esp_err_t error = health::init();
+    if (error != ESP_OK) {
+        ESP_LOGW(kTag, "Die sensor initialization failed: %s", esp_err_to_name(error));
+    }
+}
+
+const char* thermal_level_name(core::ThermalLevel level) {
+    switch (level) {
+        case core::ThermalLevel::Normal:
+            return "Normal";
+        case core::ThermalLevel::Warn:
+            return "Warn";
+        case core::ThermalLevel::Critical:
+            return "Critical";
+    }
+    return "unknown";
+}
+
+constexpr size_t kThermalReadingTextSize = 12;
+
+const char* thermal_reading_text(std::optional<core::DeciC> reading,
+                                 char (&text)[kThermalReadingTextSize]) {
+    if (!reading) {
+        return "unavailable";
+    }
+    const int32_t value = reading->v;
+    const int32_t magnitude = value < 0 ? -value : value;
+    std::snprintf(text, sizeof(text), "%s%ld.%ld C", value < 0 ? "-" : "",
+                  static_cast<long>(magnitude / 10), static_cast<long>(magnitude % 10));
+    return text;
+}
+
+void health_step() {
+    static core::ThermalPolicy policy;
+    const auto die = health::read_die();
+    core::ProbeState snapshot;
+    if (!state::snapshot(snapshot)) {
+        return;
+    }
+    const auto ambient = snapshot.cold_junction;
+    const auto level = policy.update(ambient, die);
+    if (!state::update([=](core::ProbeState& s) {
+            s.die = die;
+            s.thermal = level;
+        })) {
+        // Retry publication next round so the UI can receive Critical before sleep.
+        return;
+    }
+
+    if (level != snapshot.thermal) {
+        char ambient_text[kThermalReadingTextSize];
+        char die_text[kThermalReadingTextSize];
+        const char* ambient_c = thermal_reading_text(ambient, ambient_text);
+        const char* die_c = thermal_reading_text(die, die_text);
+        const char* from = thermal_level_name(snapshot.thermal);
+        const char* to = thermal_level_name(level);
+        if (level > snapshot.thermal) {
+            ESP_LOGW(kTag, "Thermal level %s -> %s, ambient %s, die %s", from, to, ambient_c, die_c);
+        } else {
+            ESP_LOGI(kTag, "Thermal level %s -> %s, ambient %s, die %s", from, to, ambient_c, die_c);
+        }
+    }
+    if (level == core::ThermalLevel::Critical) {
+        health::enter_protective_sleep();
+    }
+}
 
 struct Task {
     const char* name;
@@ -189,7 +259,7 @@ Task tasks[] = {
     // latency to Artisan's 1–3 s polling interval.
     {"net", 4, kNetStackBytes, 20, net_step, net_stack, net_init},
     {"ui", 3, kUiStackBytes, 100, ui_step, ui_stack, ui_init},
-    {"health", 2, kHealthStackBytes, 1000, health_step, health_stack},
+    {"health", 2, kHealthStackBytes, 1000, health_step, health_stack, health_init},
 };
 
 void run_task(void* arg) {
