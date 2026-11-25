@@ -67,7 +67,6 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
 
 1. When the board is plugged in, one batch of hardware checks (`device` skill, then `tyler-test`):
    - flash the diagnostics firmware and finish #3's analysis (which chip, which screen)
-   - set the Kconfig chip choice if it's a MAX6675
    - #14: SSID visible, the Mac joins, no captive-portal sheet
    - #12: the 1 Hz `BT ... F, 4 samples/s` log line, unplug → fault within 1 s → replug recovers
    - #16: `tools/modbus_poll.py` reads live °F, kill a client mid-connection, `--clients 5` eviction
@@ -78,11 +77,12 @@ The MVP code is complete. Until the board is wired, post-MVP work that needs no 
      bus clear on the C3 can wait forever if the clock line jams mid-transfer, and the watchdog would then
      restart the probe. The display checks the line before every transfer, which covers most cases
      but not a jam in the middle of a transfer. v6 bounds that wait.
-   - stack high-water marks ≥ 25 % free
-2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
-   screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
+   - stack high-water marks ≥ 25 % free (the UI task now also runs the menu)
+   - set the factory-default chip with Kconfig if it's a MAX6675 (staff can also change it in the menu)
    - #24: heat gun on the box until the banner, then TOO HOT; the panel keeps showing it during the
      sleep; the probe wakes and resumes once cool
+2. During #17 (Tyler's first Artisan session): check `artisan/SETUP.md` against the real screens, add
+   screenshots, and confirm which MODBUS input Artisan shows as BT (unconfirmed; the guide has a fallback).
 3. Post-MVP, in milestone order: **#25** (crash and power-problem visibility: reset reason, brownout
    counter, on the Diagnostics page), then #28. #26/#27 are hardware test sessions.
 4. Not done in #24: waking from the cooling sleep with a button (the buttons weren't in the firmware
