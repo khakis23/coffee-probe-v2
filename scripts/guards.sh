@@ -72,9 +72,11 @@ if [ "${1:-}" = --sdkconfig ]; then
     else
         report "diagnostics enabled or explicitly set without --diag" "$matches"
     fi
-    # No CI or release build may be a fault-test build (#26).
-    matches="$(scan -nE "^CONFIG_PROBE_FAULT_TEST_(HANG|CRASH)=y" "$config")" || exit 2
-    report "fault-test firmware enabled" "$matches"
+    # No CI or release build may be a fault-test build (#26). Checked positively: the normal
+    # choice must be selected, so a fault mode added to the Kconfig later is caught too.
+    selected="$(scan -xF -- "CONFIG_PROBE_FAULT_TEST_NONE=y" "$config")" || exit 2
+    [ -n "$selected" ] || report "fault-test firmware enabled" \
+        "$config lacks: CONFIG_PROBE_FAULT_TEST_NONE=y"
     [ "$fail" -ne 0 ] || printf 'guards: sdkconfig OK (%s)\n' "$config"
     exit "$fail"
 fi
@@ -120,9 +122,11 @@ report "FreeRTOS object creation (use the ...Static variant)" "$matches"
 matches="$(scan -nE "^[[:space:]]*${diag_symbol}[[:space:]]*=[[:space:]]*y" sdkconfig.defaults*)" || exit 2
 report "CONFIG_PROBE_BRINGUP_DIAG enabled in a committed sdkconfig.defaults file" "$matches"
 
-# 5b. Fault-test builds freeze or crash on purpose (#26): never in committed defaults.
-matches="$(scan -nE "^[[:space:]]*CONFIG_PROBE_FAULT_TEST_(HANG|CRASH)[[:space:]]*=[[:space:]]*y" sdkconfig.defaults*)" || exit 2
-report "CONFIG_PROBE_FAULT_TEST_* enabled in a committed sdkconfig.defaults file" "$matches"
+# 5b. Fault-test builds freeze or crash on purpose (#26): committed defaults never mention a fault
+# mode (any CONFIG_PROBE_FAULT_TEST_ symbol other than the normal _NONE).
+matches="$(scan -nE "^[[:space:]]*#?[[:space:]]*CONFIG_PROBE_FAULT_TEST_[A-Z0-9_]*" sdkconfig.defaults*)" || exit 2
+matches="$(scan -vE "CONFIG_PROBE_FAULT_TEST_NONE([^A-Z0-9_]|$)" <<<"$matches")" || exit 2
+report "CONFIG_PROBE_FAULT_TEST_* fault mode set in a committed sdkconfig.defaults file" "$matches"
 
 # 6. Board defaults must preserve the required reliability settings.
 check_required sdkconfig.defaults
