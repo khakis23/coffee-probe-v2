@@ -124,16 +124,17 @@ TEST_CASE("menu: settings that need a restart ask for one") {
         CAPTURE(static_cast<int>(item));
         CHECK(menu::needs_restart(item));
 
-        SUBCASE("OK restarts now") {
+        SUBCASE("a held OK restarts; a second tap doesn't") {
             Menu m{Settings{}};
             open_at(m, item);
             m.handle(kOk, 0);
             m.handle(kUp, 0);
             CHECK(m.handle(kOk, 0) == Action::Save);
             CHECK(m.mode() == Mode::RestartPrompt);
-            CHECK(m.handle(kUp, 0) == Action::None);  // Ignored.
+            CHECK(m.handle(kOk, 0) == Action::None);  // Review of #23: a double tap.
+            CHECK(m.handle(kUp, 0) == Action::None);
             CHECK(m.mode() == Mode::RestartPrompt);
-            CHECK(m.handle(kOk, 0) == Action::Restart);
+            CHECK(m.handle(kOkLong, 0) == Action::Restart);
             CHECK(m.mode() == Mode::Closed);
         }
         SUBCASE("BACK keeps the saved value for the next power-on") {
@@ -264,14 +265,12 @@ TEST_CASE("menu: diagnostics page") {
     open_at(m, Item::Diagnostics);
     CHECK(m.handle(kOk, 0) == Action::None);
     CHECK(m.mode() == Mode::Diagnostics);
-    m.handle(kUp, 0);
-    m.handle(kDown, 0);
-    CHECK(m.mode() == Mode::Diagnostics);
-    m.handle(kBack, 0);
-    CHECK(m.mode() == Mode::List);
-    m.handle(kOk, 0);
-    m.handle(kOk, 0);
-    CHECK(m.mode() == Mode::List);
+    for (const auto p : {kUp, kDown, kOk, kBack, kOkLong}) {
+        m.handle(p, 0);
+        CHECK(m.mode() == Mode::List);  // Any button goes back.
+        m.handle(kOk, 0);
+        REQUIRE(m.mode() == Mode::Diagnostics);
+    }
 }
 
 TEST_CASE("menu: factory reset needs a long OK on its confirm page") {
@@ -279,11 +278,14 @@ TEST_CASE("menu: factory reset needs a long OK on its confirm page") {
     open_at(m, Item::FactoryReset);
     m.handle(kOk, 0);
     CHECK(m.mode() == Mode::ConfirmReset);
-    CHECK(m.handle(kOk, 0) == Action::None);
-    CHECK(m.handle(kUp, 0) == Action::None);
+    CHECK(m.handle(kOk, 0) == Action::None);  // A tap does nothing: "Hold OK".
     CHECK(m.mode() == Mode::ConfirmReset);
-    CHECK(m.handle(kBack, 0) == Action::None);
-    CHECK(m.mode() == Mode::List);
+    for (const auto p : {kUp, kDown, kBack}) {
+        CHECK(m.handle(p, 0) == Action::None);
+        CHECK(m.mode() == Mode::List);
+        m.handle(kOk, 0);
+        REQUIRE(m.mode() == Mode::ConfirmReset);
+    }
     m.handle(kOk, 0);
     CHECK(m.handle(kOkLong, 0) == Action::FactoryReset);
     CHECK(m.mode() == Mode::Closed);

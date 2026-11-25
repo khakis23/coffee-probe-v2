@@ -142,9 +142,7 @@ Action Menu::handle(Press press, uint32_t now_ms) {
         case Mode::Edit:
             return handle_edit(press);
         case Mode::Diagnostics:
-            if (press.button == Button::Ok || press.button == Button::Back) {
-                mode_ = Mode::List;
-            }
+            mode_ = Mode::List;  // Read-only: any button goes back.
             return Action::None;
         case Mode::ConfirmReset:
             // A long OK, so a reset can't happen by tapping through the screens.
@@ -152,12 +150,13 @@ Action Menu::handle(Press press, uint32_t now_ms) {
                 close();
                 return Action::FactoryReset;
             }
-            if (press.button == Button::Back) {
-                mode_ = Mode::List;
+            if (press.button != Button::Ok) {
+                mode_ = Mode::List;  // A short OK does nothing: the page says "Hold OK".
             }
             return Action::None;
         case Mode::RestartPrompt:
-            if (press.button == Button::Ok) {
+            // A long OK, so a double tap on OK while saving can't restart the probe mid-roast.
+            if (press.button == Button::Ok && press.event == ButtonEvent::Long) {
                 close();
                 return Action::Restart;
             }

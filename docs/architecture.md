@@ -112,7 +112,8 @@ before the protective sleep. Burn-in protection comes later.
   password, Diagnostics (firmware, uptime, box and chip temperatures, Wi-Fi devices), Factory reset.
 - Editor: full screen, the value large, "OK save BACK cancel". Offset, brightness, flip and show password
   apply at once; probe chip, grounded tip and both Wi-Fi settings are set up at boot, so saving them asks
-  "Restart to apply this change?" (OK restarts, BACK keeps it for the next power-on).
+  "Restart to apply this change?" (a held OK restarts, so a double tap can't; BACK keeps it for the
+  next power-on). Diagnostics: any button goes back.
 - Factory reset: from the menu (confirm with a held OK), or by holding OK from power-on for 5 s with an
   on-screen countdown (letting go cancels). Both erase the saved settings; the build options are the
   factory default for the probe chip and grounded mode (D-012).

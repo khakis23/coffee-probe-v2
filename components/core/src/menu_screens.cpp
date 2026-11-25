@@ -79,7 +79,7 @@ void draw_restart_prompt(Fb& fb) {
     title(fb, "SAVED");
     centered(fb, 14, "Restart to apply");
     centered(fb, 24, "this change?");
-    centered(fb, 40, "OK: restart now");
+    centered(fb, 40, "Hold OK: restart");
     centered(fb, 52, "BACK: next power-on");
 }
 
@@ -113,7 +113,7 @@ void temperature_line(Fb& fb, int row, std::string_view label, std::optional<Dec
 }
 
 void draw_diagnostics(const Inputs& in, Fb& fb) {
-    title(fb, "DIAGNOSTICS", "OK: back");
+    title(fb, "DIAGNOSTICS", "Any key");
     // A long git-describe version is cut so it never runs into the label.
     line(fb, 0, "Firmware", in.version.empty() ? std::string_view{"?"} : in.version.substr(0, 12));
 

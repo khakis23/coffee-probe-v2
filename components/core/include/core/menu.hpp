@@ -38,8 +38,8 @@ enum class Mode : uint8_t {
     List,           // The item list with a cursor.
     Edit,           // One setting, full screen: UP/DOWN change it, OK saves, BACK cancels.
     Diagnostics,    // Read-only information. Any button goes back.
-    ConfirmReset,   // "Reset all settings?" Holding OK confirms, anything else goes back.
-    RestartPrompt,  // A saved setting needs a restart. OK restarts now, BACK means later.
+    ConfirmReset,   // "Reset all settings?" Holding OK confirms; UP, DOWN or BACK go back.
+    RestartPrompt,  // A saved setting needs a restart. Holding OK restarts, BACK means later.
 };
 
 enum class Action : uint8_t {
