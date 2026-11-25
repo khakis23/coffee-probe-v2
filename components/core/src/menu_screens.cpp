@@ -140,34 +140,47 @@ void draw_diagnostics_status(const Inputs& in, Fb& fb) {
     line(fb, 4, "Wi-Fi devices", as_view(clients, c, sizeof(clients)));
 }
 
-// Page 2, for whoever helps when something went wrong (#25): restarts since power-on and why
-// the last one happened, power dips, and the memory margins. Six tighter rows.
-void draw_diagnostics_health(const Inputs& in, Fb& fb) {
-    constexpr int kPitch = 9;  // Rows at 12, 21, ... 57: the last ends on row 63.
+// Page 2, for whoever helps when something went wrong (#25): restarts since power-on, why the
+// last one happened, power dips, and whether a crash dump is waiting to be read.
+void draw_diagnostics_restarts(const Inputs& in, Fb& fb) {
     const ProbeState& s = in.state;
-    line(fb, 0, "Last reset", reset_cause_text(s.reset_cause), kPitch);
-    count_line(fb, 1, "Restarts", s.boots > 0 ? s.boots - 1u : 0u, "", kPitch);
-    count_line(fb, 2, "Crashes", s.crashes, "", kPitch);
-    count_line(fb, 3, "Power dips", s.brownouts, "", kPitch);
+    line(fb, 0, "Last reset", reset_cause_text(s.reset_cause));
+    count_line(fb, 1, "Restarts", s.boots > 0 ? s.boots - 1u : 0u, "", kRowH);
+    count_line(fb, 2, "Crashes", s.crashes, "", kRowH);
+    count_line(fb, 3, "Power dips", s.brownouts, "", kRowH);
+    line(fb, 4, "Crash record", s.crash_record ? "Saved" : "None");
+}
+
+// Page 3: where Artisan finds the probe, and the memory margins.
+void draw_diagnostics_system(const Inputs& in, Fb& fb) {
+    const ProbeState& s = in.state;
+    line(fb, 0, "Address", in.address.empty() ? std::string_view{"--"} : in.address);
     if (s.min_free_heap == 0) {
-        line(fb, 4, "Free memory", "--", kPitch);
+        line(fb, 1, "Free memory", "--");
     } else {
-        count_line(fb, 4, "Free memory", s.min_free_heap / 1024, " KB", kPitch);
+        count_line(fb, 1, "Free memory", s.min_free_heap / 1024, " KB", kRowH);
     }
     if (s.min_stack_free == 0) {
-        line(fb, 5, "Stack spare", "--", kPitch);
+        line(fb, 2, "Stack spare", "--");
     } else {
-        count_line(fb, 5, "Stack spare", s.min_stack_free, " B", kPitch);
+        count_line(fb, 2, "Stack spare", s.min_stack_free, " B", kRowH);
     }
 }
 
 void draw_diagnostics(const Inputs& in, const Menu& m, Fb& fb) {
-    const bool health = m.diagnostics_page() == 1;
-    title(fb, "DIAGNOSTICS", health ? "2/2" : "1/2");
-    if (health) {
-        draw_diagnostics_health(in, fb);
-    } else {
-        draw_diagnostics_status(in, fb);
+    constexpr std::string_view kPageNames[menu::kDiagnosticsPages] = {"1/3", "2/3", "3/3"};
+    const uint8_t page = m.diagnostics_page() < menu::kDiagnosticsPages ? m.diagnostics_page() : 0;
+    title(fb, "DIAGNOSTICS", kPageNames[page]);
+    switch (page) {
+        case 1:
+            draw_diagnostics_restarts(in, fb);
+            break;
+        case 2:
+            draw_diagnostics_system(in, fb);
+            break;
+        default:
+            draw_diagnostics_status(in, fb);
+            break;
     }
 }
 

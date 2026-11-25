@@ -142,8 +142,11 @@ Action Menu::handle(Press press, uint32_t now_ms) {
         case Mode::Edit:
             return handle_edit(press);
         case Mode::Diagnostics:
-            if (press.button == Button::Up || press.button == Button::Down) {
+            if (press.button == Button::Down) {
                 diagnostics_page_ = static_cast<uint8_t>((diagnostics_page_ + 1) % kDiagnosticsPages);
+            } else if (press.button == Button::Up) {
+                diagnostics_page_ = static_cast<uint8_t>(
+                    (diagnostics_page_ + kDiagnosticsPages - 1) % kDiagnosticsPages);
             } else {
                 mode_ = Mode::List;
             }

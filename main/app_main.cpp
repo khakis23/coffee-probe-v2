@@ -165,7 +165,12 @@ extern "C" void app_main() {
         // The tasks cannot run without shared state. Panic reboots the probe to retry setup.
         std::abort();
     }
-    state::update([&boot, power_warning](core::ProbeState& s) {
+    const bool crash_record = health::crash_record_saved();
+    if (crash_record) {
+        ESP_LOGW(kTag, "a crash dump is saved in flash (idf.py coredump-info reads it)");
+    }
+    state::update([&boot, power_warning, crash_record](core::ProbeState& s) {
+        s.crash_record = crash_record;
         s.reset_cause = boot.cause;
         s.boots = boot.record.boots;
         s.brownouts = boot.record.brownouts;

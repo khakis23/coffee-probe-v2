@@ -16,6 +16,10 @@ struct BootInfo {
 
 // Call once, first thing in app_main: reads why the chip reset and updates the RTC record.
 BootInfo record_boot();
+// Whether a valid crash dump is saved in flash (read with `idf.py coredump-info`). Reads and
+// checksums the dump partition: call once at boot, not from a task loop.
+bool crash_record_saved();
+
 // The power warning ended (kPowerCalmS without a dip): the next dip starts a fresh count.
 void clear_brownouts();
 

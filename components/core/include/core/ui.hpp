@@ -17,6 +17,7 @@ struct Inputs {
     std::string_view password{};
     bool show_password{true};          // Settings: off hides the password from the top bar.
     std::string_view version{};        // Firmware version, for the Diagnostics screen.
+    std::string_view address{};        // The probe's IP address (Artisan's Host), for Diagnostics.
     const menu::Menu* menu{nullptr};   // The settings menu, or nullptr if there is none.
 };
 

@@ -34,6 +34,7 @@ struct ProbeState {
     bool power_warning{false};     // "Check USB cable/power"; Wi-Fi power is lowered meanwhile.
     uint32_t min_free_heap{0};     // Lowest free heap since boot, bytes (0 = not measured yet).
     uint32_t min_stack_free{0};    // Smallest stack headroom of our tasks, bytes (0 = not yet).
+    bool crash_record{false};      // A crash dump is saved in flash (read with idf.py coredump-info).
 };
 
 inline constexpr uint32_t kStaleMs = 2000;

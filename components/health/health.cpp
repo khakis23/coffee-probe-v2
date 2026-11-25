@@ -6,6 +6,7 @@
 
 #include "driver/temperature_sensor.h"
 #include "esp_attr.h"
+#include "esp_core_dump.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
@@ -84,6 +85,8 @@ BootInfo record_boot() {
     current_record = info.record;
     return info;
 }
+
+bool crash_record_saved() { return esp_core_dump_image_check() == ESP_OK; }
 
 void clear_brownouts() {
     current_record = core::cleared_brownouts(current_record);
