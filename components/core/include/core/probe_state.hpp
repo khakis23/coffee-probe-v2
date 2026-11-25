@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "core/boot_record.hpp"
 #include "core/temperature.hpp"
 #include "core/thermal.hpp"
 #include "core/thermocouple.hpp"
@@ -25,6 +26,14 @@ struct ProbeState {
     ThermalLevel thermal{ThermalLevel::Normal};  // core::ThermalPolicy over cold junction + die
     // System
     uint32_t uptime_s{0};
+    // Boot and health diagnostics (#25): set by app_main at boot, updated by the health task.
+    ResetCause reset_cause{ResetCause::PowerOn};
+    uint16_t boots{1};             // Since power-on, including this one.
+    uint16_t brownouts{0};         // Power dips since power-on (or since the warning cleared).
+    uint16_t crashes{0};           // Crashes and watchdog resets since power-on.
+    bool power_warning{false};     // "Check USB cable/power"; Wi-Fi power is lowered meanwhile.
+    uint32_t min_free_heap{0};     // Lowest free heap since boot, bytes (0 = not measured yet).
+    uint32_t min_stack_free{0};    // Smallest stack headroom of our tasks, bytes (0 = not yet).
 };
 
 inline constexpr uint32_t kStaleMs = 2000;

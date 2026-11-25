@@ -260,16 +260,26 @@ TEST_CASE("menu: a channel the menu doesn't offer steps to the first choice") {
     CHECK(m.draft().wifi_channel == 1);
 }
 
-TEST_CASE("menu: diagnostics page") {
+TEST_CASE("menu: diagnostics pages") {
     Menu m{Settings{}};
     open_at(m, Item::Diagnostics);
     CHECK(m.handle(kOk, 0) == Action::None);
     CHECK(m.mode() == Mode::Diagnostics);
-    for (const auto p : {kUp, kDown, kOk, kBack, kOkLong}) {
+    CHECK(m.diagnostics_page() == 0);
+    m.handle(kDown, 0);
+    CHECK(m.diagnostics_page() == 1);
+    m.handle(kDown, 0);
+    CHECK(m.diagnostics_page() == 0);
+    m.handle(kUp, 0);
+    CHECK(m.diagnostics_page() == 1);
+    CHECK(m.mode() == Mode::Diagnostics);
+    for (const auto p : {kOk, kBack, kOkLong}) {
         m.handle(p, 0);
-        CHECK(m.mode() == Mode::List);  // Any button goes back.
+        CHECK(m.mode() == Mode::List);
         m.handle(kOk, 0);
         REQUIRE(m.mode() == Mode::Diagnostics);
+        CHECK(m.diagnostics_page() == 0);  // Always opens on the first page.
+        m.handle(kDown, 0);
     }
 }
 
@@ -529,4 +539,51 @@ TEST_CASE("boot reset screen: countdown digits differ, done message differs") {
     ui::render_boot_reset(menu::BootHold::Reset, 0, done);
     CHECK(five != four);
     CHECK(done != four);
+}
+
+TEST_CASE("diagnostics page 2: shows restarts, power dips and memory, '--' before measured") {
+    Menu m{Settings{}};
+    ui::Inputs in = live_inputs();
+    in.menu = &m;
+    open_at(m, Item::Diagnostics);
+    m.handle(kOk, 0);
+    Framebuffer page1;
+    ui::render(in, page1);
+    m.handle(kDown, 0);
+    Framebuffer unmeasured;
+    ui::render(in, unmeasured);
+    CHECK(unmeasured != page1);
+    in.state.reset_cause = core::ResetCause::Brownout;
+    in.state.boots = 4;
+    in.state.brownouts = 2;
+    in.state.crashes = 1;
+    in.state.min_free_heap = 150 * 1024;
+    in.state.min_stack_free = 1200;
+    Framebuffer measured;
+    ui::render(in, measured);
+    CHECK(measured != unmeasured);
+}
+
+TEST_CASE("top bar: the power warning alternates with the connection line") {
+    ui::Inputs in = live_inputs();
+    in.state.power_warning = true;
+    Framebuffer even;
+    Framebuffer odd;
+    in.now_ms = 0;
+    in.state.bt_updated_ms = 0;
+    ui::render(in, even);
+    in.now_ms = ui::kJoinAlternateMs;
+    in.state.bt_updated_ms = ui::kJoinAlternateMs;
+    ui::render(in, odd);
+    CHECK(odd.pixel(0, 0));         // Lit bar on the warning phase.
+    CHECK_FALSE(even.pixel(0, 0));  // The normal top line on the other phase.
+
+    // Overheat beats it on both phases.
+    in.state.thermal = core::ThermalLevel::Warn;
+    Framebuffer hot_odd;
+    ui::render(in, hot_odd);
+    in.state.power_warning = false;
+    Framebuffer hot_only;
+    ui::render(in, hot_only);
+    CHECK(hot_odd == hot_only);
 }

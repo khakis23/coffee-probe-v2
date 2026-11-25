@@ -142,7 +142,11 @@ Action Menu::handle(Press press, uint32_t now_ms) {
         case Mode::Edit:
             return handle_edit(press);
         case Mode::Diagnostics:
-            mode_ = Mode::List;  // Read-only: any button goes back.
+            if (press.button == Button::Up || press.button == Button::Down) {
+                diagnostics_page_ = static_cast<uint8_t>((diagnostics_page_ + 1) % kDiagnosticsPages);
+            } else {
+                mode_ = Mode::List;
+            }
             return Action::None;
         case Mode::ConfirmReset:
             // A long OK, so a reset can't happen by tapping through the screens.
@@ -180,6 +184,7 @@ Action Menu::handle_list(Press press) {
             break;
         case Button::Ok:
             if (cursor_ == Item::Diagnostics) {
+                diagnostics_page_ = 0;
                 mode_ = Mode::Diagnostics;
             } else if (cursor_ == Item::FactoryReset) {
                 mode_ = Mode::ConfirmReset;

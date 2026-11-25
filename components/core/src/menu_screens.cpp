@@ -96,8 +96,8 @@ void draw_confirm_reset(Fb& fb) {
 // Whole degrees F straight from tenths of C, rounded once: F = (9c + 1600) / 50.
 int whole_f(DeciC c) { return div_round_away(9 * static_cast<int32_t>(c.v) + 1600, 50); }
 
-void line(Fb& fb, int row, std::string_view label, std::string_view value) {
-    const int y = kFirstRowY + row * kRowH;
+void line(Fb& fb, int row, std::string_view label, std::string_view value, int pitch = kRowH) {
+    const int y = kFirstRowY + row * pitch;
     fb.text(2, y, label);
     fb.text(Fb::kWidth - 2 - Fb::text_width(value), y, value);
 }
@@ -112,8 +112,15 @@ void temperature_line(Fb& fb, int row, std::string_view label, std::optional<Dec
     line(fb, row, label, as_view(buf, n, sizeof(buf)));
 }
 
-void draw_diagnostics(const Inputs& in, Fb& fb) {
-    title(fb, "DIAGNOSTICS", "Any key");
+void count_line(Fb& fb, int row, std::string_view label, unsigned long value, const char* unit,
+                int pitch) {
+    char buf[14];
+    const int n = std::snprintf(buf, sizeof(buf), "%lu%s", value, unit);
+    line(fb, row, label, as_view(buf, n, sizeof(buf)), pitch);
+}
+
+// Page 1, for staff: is it the right firmware, is it hot, is a laptop connected.
+void draw_diagnostics_status(const Inputs& in, Fb& fb) {
     // A long git-describe version is cut so it never runs into the label.
     line(fb, 0, "Firmware", in.version.empty() ? std::string_view{"?"} : in.version.substr(0, 12));
 
@@ -133,6 +140,37 @@ void draw_diagnostics(const Inputs& in, Fb& fb) {
     line(fb, 4, "Wi-Fi devices", as_view(clients, c, sizeof(clients)));
 }
 
+// Page 2, for whoever helps when something went wrong (#25): restarts since power-on and why
+// the last one happened, power dips, and the memory margins. Six tighter rows.
+void draw_diagnostics_health(const Inputs& in, Fb& fb) {
+    constexpr int kPitch = 9;  // Rows at 12, 21, ... 57: the last ends on row 63.
+    const ProbeState& s = in.state;
+    line(fb, 0, "Last reset", reset_cause_text(s.reset_cause), kPitch);
+    count_line(fb, 1, "Restarts", s.boots > 0 ? s.boots - 1u : 0u, "", kPitch);
+    count_line(fb, 2, "Crashes", s.crashes, "", kPitch);
+    count_line(fb, 3, "Power dips", s.brownouts, "", kPitch);
+    if (s.min_free_heap == 0) {
+        line(fb, 4, "Free memory", "--", kPitch);
+    } else {
+        count_line(fb, 4, "Free memory", s.min_free_heap / 1024, " KB", kPitch);
+    }
+    if (s.min_stack_free == 0) {
+        line(fb, 5, "Stack spare", "--", kPitch);
+    } else {
+        count_line(fb, 5, "Stack spare", s.min_stack_free, " B", kPitch);
+    }
+}
+
+void draw_diagnostics(const Inputs& in, const Menu& m, Fb& fb) {
+    const bool health = m.diagnostics_page() == 1;
+    title(fb, "DIAGNOSTICS", health ? "2/2" : "1/2");
+    if (health) {
+        draw_diagnostics_health(in, fb);
+    } else {
+        draw_diagnostics_status(in, fb);
+    }
+}
+
 }  // namespace
 
 void draw_menu(const Inputs& in, Framebuffer& fb) {
@@ -148,7 +186,7 @@ void draw_menu(const Inputs& in, Framebuffer& fb) {
             draw_edit(m, fb);
             break;
         case Mode::Diagnostics:
-            draw_diagnostics(in, fb);
+            draw_diagnostics(in, m, fb);
             break;
         case Mode::ConfirmReset:
             draw_confirm_reset(fb);

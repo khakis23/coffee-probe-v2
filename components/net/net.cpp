@@ -186,6 +186,10 @@ esp_err_t start_softap(uint8_t channel, int8_t tx_power_qdbm) {
     return ESP_OK;
 }
 
+esp_err_t set_tx_power(int8_t tx_power_qdbm) {
+    return check_step("esp_wifi_set_max_tx_power", esp_wifi_set_max_tx_power(tx_power_qdbm));
+}
+
 const char* ssid() { return ap_ssid; }
 
 uint8_t client_count() { return associated_clients.load(std::memory_order_relaxed); }

@@ -8,6 +8,7 @@
 #include "core/menu.hpp"
 #include "core/ui.hpp"
 #include "display/display.hpp"
+#include "health/health.hpp"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
@@ -102,8 +103,22 @@ extern "C" void app_main() {
     bringup::run();  // hardware diagnostics (#2/#3); never returns
 #endif
 
+    // First, before anything can reset the chip again: why did it reset, and the counts since
+    // power-on (#25).
+    const health::BootInfo boot = health::record_boot();
+    const bool power_warning =
+        core::power_warning(boot.record, boot.stored_was_valid, boot.cause, 0);
+
     log_chip_info();
     ESP_LOGI(kTag, "Firmware version: %s", esp_app_get_description()->version);
+    ESP_LOGI(kTag, "Last reset: %.*s; since power-on: %u boots, %u crashes, %u power dips",
+             static_cast<int>(core::reset_cause_text(boot.cause).size()),
+             core::reset_cause_text(boot.cause).data(), static_cast<unsigned>(boot.record.boots),
+             static_cast<unsigned>(boot.record.crashes),
+             static_cast<unsigned>(boot.record.brownouts));
+    if (power_warning) {
+        ESP_LOGW(kTag, "repeated power dips: lowering Wi-Fi power, check the USB cable/power");
+    }
 
     // Wi-Fi needs NVS for PHY calibration. If Wi-Fi cannot start, the probe is unusable
     // and the configured panic-to-reboot recovery is the right response during setup.
@@ -150,8 +165,18 @@ extern "C" void app_main() {
         // The tasks cannot run without shared state. Panic reboots the probe to retry setup.
         std::abort();
     }
-    const int8_t tx_power = core::effective_tx_power_qdbm(settings.tx_power_qdbm,
-                                                          board::kBoard.wifi_max_tx_power_qdbm);
+    state::update([&boot, power_warning](core::ProbeState& s) {
+        s.reset_cause = boot.cause;
+        s.boots = boot.record.boots;
+        s.brownouts = boot.record.brownouts;
+        s.crashes = boot.record.crashes;
+        s.power_warning = power_warning;
+    });
+    int8_t tx_power = core::effective_tx_power_qdbm(settings.tx_power_qdbm,
+                                                    board::kBoard.wifi_max_tx_power_qdbm);
+    if (power_warning && tx_power > core::kPowerWarningTxQdbm) {
+        tx_power = core::kPowerWarningTxQdbm;  // Shorter current peaks; restored once calm.
+    }
     ESP_ERROR_CHECK(net::start_softap(settings.wifi_channel, tx_power));
     ESP_LOGI(kTag, "Wi-Fi SSID %s, password (see Artisan guide), IP %s, channel %u, %d.%02d dBm",
              net::ssid(), net::kApIp, static_cast<unsigned>(settings.wifi_channel),

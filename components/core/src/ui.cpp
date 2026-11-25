@@ -29,6 +29,15 @@ void draw_top_bar(const Inputs& in, Fb& fb) {
         fb.hline(0, kDividerY, Fb::kWidth);
         return;
     }
+    if (in.state.power_warning && (in.now_ms / kJoinAlternateMs) % 2 == 1) {
+        // Alternates with the connection line, inverted like the overheat banner: the link
+        // status stays visible half the time.
+        fb.fill_rect(0, 0, Fb::kWidth, kDividerY);
+        const std::string_view warning = "Check USB cable/power";
+        fb.text((Fb::kWidth - Fb::text_width(warning)) / 2, kBarY + 1, warning, 1, false);
+        fb.hline(0, kDividerY, Fb::kWidth);
+        return;
+    }
     switch (link_status(in)) {
         case Link::Artisan:
             centered(fb, kBarY, "Artisan connected");
