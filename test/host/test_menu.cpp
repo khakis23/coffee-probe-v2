@@ -388,8 +388,20 @@ TEST_CASE("boot reset: letting go part way cancels it") {
     menu::BootResetHold h;
     CHECK(h.update(true, 0) == menu::BootHold::Holding);
     CHECK(h.update(true, 3000) == menu::BootHold::Holding);
-    CHECK(h.update(false, 3010) == menu::BootHold::Released);
+    CHECK(h.update(false, 3010) == menu::BootHold::Holding);
+    CHECK(h.update(false, 3010 + menu::kBootReleaseMs - 1) == menu::BootHold::Holding);
+    CHECK(h.update(false, 3010 + menu::kBootReleaseMs) == menu::BootHold::Released);
     CHECK(h.update(true, 9000) == menu::BootHold::Released);
+}
+
+TEST_CASE("boot reset: a short glitch during the hold doesn't cancel it") {
+    // Review of #23: one bad sample must not abort a reset staff are holding for.
+    menu::BootResetHold h;
+    CHECK(h.update(true, 0) == menu::BootHold::Holding);
+    CHECK(h.update(false, 2000) == menu::BootHold::Holding);
+    CHECK(h.update(false, 2040) == menu::BootHold::Holding);
+    CHECK(h.update(true, 2060) == menu::BootHold::Holding);
+    CHECK(h.update(true, menu::kBootResetHoldMs) == menu::BootHold::Reset);
 }
 
 // ---- Rendering -----------------------------------------------------------------------------

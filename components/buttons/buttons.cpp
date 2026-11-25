@@ -23,6 +23,9 @@ constexpr Input kInputs[kButtons] = {
 
 // The UI task is the only caller of poll().
 core::Debouncer debouncers[kButtons];
+// A button already down when polling starts (OK still held after the power-on factory reset)
+// is ignored until it has been seen released, so it can't open the menu by itself.
+bool armed[kButtons]{};
 
 bool down(gpio_num_t pin) {
     // GPIO_NUM_NC: a board without that button never reports it pressed.
@@ -53,7 +56,9 @@ esp_err_t init() {
 int poll(uint32_t now_ms, core::menu::Press (&out)[kButtons]) {
     int count = 0;
     for (int i = 0; i < kButtons; ++i) {
-        if (const auto event = debouncers[i].update(down(kInputs[i].pin), now_ms)) {
+        const bool pressed = down(kInputs[i].pin);
+        armed[i] = armed[i] || !pressed;
+        if (const auto event = debouncers[i].update(armed[i] && pressed, now_ms)) {
             out[count++] = {kInputs[i].button, *event};
         }
     }

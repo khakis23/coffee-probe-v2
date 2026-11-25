@@ -275,10 +275,24 @@ BootHold BootResetHold::update(bool ok_pressed, uint32_t now_ms) {
     if (!started_) {
         started_ = true;
         start_ms_ = now_ms;
+        if (!ok_pressed) {
+            result_ = BootHold::Released;  // A normal boot: no delay.
+            return result_;
+        }
     }
     if (!ok_pressed) {
-        result_ = BootHold::Released;
-    } else if (now_ms - start_ms_ >= kBootResetHoldMs) {
+        if (!releasing_) {
+            releasing_ = true;
+            release_ms_ = now_ms;
+        }
+        if (now_ms - release_ms_ >= kBootReleaseMs) {
+            result_ = BootHold::Released;
+            return result_;
+        }
+    } else {
+        releasing_ = false;
+    }
+    if (ok_pressed && now_ms - start_ms_ >= kBootResetHoldMs) {
         result_ = BootHold::Reset;
     }
     elapsed_ms_ = now_ms - start_ms_;

@@ -100,6 +100,8 @@ class Menu {
 // Factory reset at power-on: OK held from boot for this long resets the settings. A way back
 // from settings that make the probe hard to use (a flipped screen, the wrong chip).
 inline constexpr uint32_t kBootResetHoldMs = 5000;
+// OK must read released this long to cancel, so a contact glitch during the hold doesn't.
+inline constexpr uint32_t kBootReleaseMs = 60;
 
 enum class BootHold : uint8_t {
     Holding,   // OK is still down; keep showing the countdown.
@@ -109,8 +111,9 @@ enum class BootHold : uint8_t {
 
 class BootResetHold {
    public:
-    // Call every poll from the first moment of boot with the debounced OK level. Once the
-    // result is Released or Reset it stays there.
+    // Call every poll (about every 20 ms) from the first moment of boot with the raw OK level.
+    // OK up at the first call releases at once; later, OK must stay up kBootReleaseMs to cancel.
+    // Once the result is Released or Reset it stays there.
     BootHold update(bool ok_pressed, uint32_t now_ms);
     // Whole seconds left for the on-screen countdown: 5, 4, 3, 2, 1.
     uint8_t seconds_left() const;
@@ -120,6 +123,8 @@ class BootResetHold {
     bool started_{false};
     uint32_t start_ms_{0};
     uint32_t elapsed_ms_{0};
+    bool releasing_{false};
+    uint32_t release_ms_{0};
 };
 
 }  // namespace core::menu
