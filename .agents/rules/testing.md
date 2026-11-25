@@ -26,8 +26,8 @@
 
 - `scripts/ci-local.sh` before every push; the full run before opening or merging a PR.
 - `scripts/ci-local.sh` is the only CI gate. `.github/workflows/ci.yml` (manual-only, D-009) has the same jobs; change both together.
-- IDF v6 jobs are allowed to fail until #2 lands; after that, remove `continue-on-error` and the
-  allowed-failure line in `ci-local.sh` in the same PR.
+- Every job must pass, IDF v6 included (required since 2026-11-25: v6 builds cleanly, and the
+  top-level `CMakeLists.txt` accepts only v5.3.x and v6.0.x).
 - Never delete, skip or weaken a failing test or guard to get green. If a test is wrong, say why in
   the PR and fix the test.
 

@@ -97,19 +97,36 @@ fingerprint="$(defaults_fingerprint "$diag" "$dir" "$fault")"
 if [ ! -f "$dir/.defaults-fingerprint" ] || [ "$(<"$dir/.defaults-fingerprint")" != "$fingerprint" ]; then
     rm -f "$dir/sdkconfig"
 fi
-target=flash; $build_only && target=build
 [ -z "$port" ] || extra+=(-p "$port")
 
-echo "Building $name${port:+ and flashing $port}"
-# Clean environment so an export.sh sourced for the other IDF version can't leak in.
-env -i HOME="$HOME" TERM=dumb LANG=en_US.UTF-8 \
-    PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-    IDF_PATH="$idf_path" bash -c '
-        set -e
-        . "$IDF_PATH/export.sh" >/dev/null
-        cd "$0"
-        idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" "${@:3}"
-    ' "$ROOT" "$dir" "$board" "${extra[@]+"${extra[@]}"}" "$target"
+run_idf() {
+    # Clean environment so an export.sh sourced for the other IDF version can't leak in.
+    env -i HOME="$HOME" TERM=dumb LANG=en_US.UTF-8 \
+        PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+        IDF_PATH="$idf_path" bash -c '
+            set -e
+            . "$IDF_PATH/export.sh" >/dev/null
+            cd "$0"
+            idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" "${@:3}"
+        ' "$ROOT" "$dir" "$board" "${extra[@]+"${extra[@]}"}" "$@"
+}
+
+echo "Building $name"
+run_idf build
+# Check the config that was actually built before anything reaches a board: a fault test or
+# diagnostics switched on by hand (menuconfig) in this folder must not be flashed as normal.
+guard_args=()
+$diag && guard_args+=(--diag)
+if [ -z "$fault" ]; then
+    "$ROOT/scripts/guards.sh" --sdkconfig "$dir/sdkconfig" "${guard_args[@]+"${guard_args[@]}"}" || {
+        echo "Refusing to flash: $dir/sdkconfig breaks the rules above. Delete it and rebuild."
+        exit 1
+    }
+fi
+if ! $build_only; then
+    echo "Flashing $port"
+    run_idf flash
+fi
 printf '%s\n' "$fingerprint" >"$dir/.defaults-fingerprint"
 
 echo "Build folder: $dir"

@@ -33,8 +33,22 @@ case "$idf" in
 esac
 
 version="$(git -C "$ROOT" describe --tags --always --dirty)"
-if [[ "$version" == *-dirty ]] && ! $allow_dirty; then
-    echo "Uncommitted changes: a release must be built from a commit. (--allow-dirty to test.)"
+# Untracked files count too: e.g. a stray version.txt would change the version the firmware reports.
+if [ -n "$(git -C "$ROOT" status --porcelain)" ] && ! $allow_dirty; then
+    echo "Uncommitted or untracked files: a release must be built from a clean commit."
+    echo "(--allow-dirty to test the script.)"
+    exit 2
+fi
+
+idf_env() {   # idf_env <command string> [args...]: run in a clean environment with this IDF
+    env -i HOME="$HOME" TERM=dumb LANG=en_US.UTF-8 \
+        PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+        IDF_PATH="$idf_path" bash -c '. "$IDF_PATH/export.sh" >/dev/null && '"$1" "${@:2}"
+}
+# The files are labelled with the IDF version, so make sure the install really is that version.
+actual="$(idf_env 'idf.py --version' 2>/dev/null | tail -1)"
+if [[ "$actual" != "ESP-IDF $idf" && "$actual" != "ESP-IDF $idf-"* ]]; then
+    echo "Expected ESP-IDF $idf at $idf_path, found: ${actual:-nothing}"
     exit 2
 fi
 
@@ -44,22 +58,19 @@ mkdir -p "$out"
 
 for board in generic xiao; do
     log="$out/build-$board.log"
-    "$ROOT/scripts/flash.sh" --build-only --board "$board" --idf "$idf" >"$log" 2>&1 || {
-        echo "Build failed for $board, see $log"; exit 1; }
-    dir="$(sed -n 's/^Build folder: //p' "$log")"
+    # A fresh build folder and sdkconfig from the committed defaults only: never a developer's
+    # cached build, whose sdkconfig may hold settings changed by hand.
+    dir="$out/build-$board"
+    rm -rf "$dir"
+    idf_env 'cd "$0" && idf.py -B "$1" -DSDKCONFIG="$1/sdkconfig" -DPROBE_BOARD="$2" build' \
+        "$ROOT" "$dir" "$board" >"$log" 2>&1 || { echo "Build failed for $board, see $log"; exit 1; }
     # Same rules as CI: reliability settings on, no diagnostics, no fault test.
     "$ROOT/scripts/guards.sh" --sdkconfig "$dir/sdkconfig" >>"$log" 2>&1 || {
         echo "Guard failed for $board's sdkconfig, see $log"; exit 1; }
     bin="$out/coffee-probe-$board-$version.bin"
-    env -i HOME="$HOME" TERM=dumb LANG=en_US.UTF-8 \
-        PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
-        IDF_PATH="$idf_path" bash -c '
-            set -e
-            . "$IDF_PATH/export.sh" >/dev/null
-            cd "$0"
-            # flash_args lists each part with its address; merge_bin writes them as one image.
-            python -m esptool --chip esp32c3 "$2" -o "$1" @flash_args
-        ' "$dir" "$bin" "$merge" >>"$log" 2>&1 || { echo "Merging failed for $board, see $log"; exit 1; }
+    # flash_args lists each part with its address; merging writes them as one image for 0x0.
+    idf_env 'cd "$0" && python -m esptool --chip esp32c3 "$2" -o "$1" @flash_args' \
+        "$dir" "$bin" "$merge" >>"$log" 2>&1 || { echo "Merging failed for $board, see $log"; exit 1; }
     cp "$dir/coffee_probe.elf" "$out/coffee-probe-$board-$version.elf"
     echo "Built $bin"
 done

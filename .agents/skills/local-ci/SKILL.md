@@ -17,8 +17,7 @@ scripts/ci-local.sh --clean          # from scratch, like a fresh GitHub runner 
 ```
 
 Jobs: `guards`, `host`, `generic-v5.3.1`, `xiao-v5.3.1`, `generic-v6.0.3`, `xiao-v6.0.3`,
-`generic-v5.3.1-diag`, `generic-v6.0.3-diag`. v6 jobs show `ALLOWED-FAIL` instead of failing the run
-until #2 lands.
+`generic-v5.3.1-diag`, `generic-v6.0.3-diag`. Every job must pass, v6 included.
 A filter that matches no job, or an unknown `--option`, exits 2 instead of silently skipping checks.
 
 Each firmware job also checks the **generated** sdkconfig (`scripts/guards.sh --sdkconfig`): the
@@ -39,7 +38,7 @@ run prints the exact folder. Each failing job prints its last 15 log lines; the 
   `sdkconfig.defaults*` changed, the job's sdkconfig is regenerated automatically; if it still looks
   stale, rerun that job with `--clean`.
 - **Only v6 fails**: check whether the API differs in v6 (`ESP_IDF_VERSION` guard in one place) and
-  note it on #2. Don't let it block v5 work, but don't ignore it either.
+  note it on #2. It blocks the merge like any other failure.
 - **Weird missing-file or "2" errors**: iCloud conflict copies. `--clean`, and check `git status` for
   files named `<name> 2`.
 

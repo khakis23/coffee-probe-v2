@@ -47,5 +47,6 @@ Labels on the web page may differ slightly from these steps; the address 0x0 is 
 
 - `scripts/flash.sh` builds and flashes from the source (options `--board generic|xiao`, `--idf v5.3.1|v6.0.3`). It writes only the bootloader, partition table and app, so the probe's settings are kept.
 - `scripts/release.sh [--idf v5.3.1|v6.0.3]` builds the release files from a clean commit into `~/Library/Caches/coffee-probe/release/<version>/<idf>/`: one merged `.bin` per board (written at 0x0), the matching `.elf`, and `SHA256SUMS`. Attach all of them to the GitHub release for tag `<version>`. Keep the `.elf`: it is needed to read a crash dump from a probe running that release (`idf.py coredump-info`, see docs/dev-setup.md).
-- Why settings reset with the merged file: it covers address 0x0 to the end of the app, which includes the settings area (NVS) and the RF calibration area between them; RF calibration redoes itself on the first boot.
+- Why settings reset with the merged file: it covers address 0x0 to the end of the app, which includes the settings area (NVS). NVS also holds the Wi-Fi RF calibration, which redoes itself on the first boot.
+- A saved crash dump (at 0x1F0000, after the app) survives both kinds of update. After an update, **Crash record: Saved** may be from the old firmware: read it with the `.elf` of the release that was running when it crashed, so keep every release's `.elf`.
 - Never load a fault-test build (`--fault`) or the bring-up diagnostics build (`--diag`) onto a probe staff use; release.sh refuses both.
