@@ -11,6 +11,9 @@ namespace net {
 // Returns ESP_OK or the failing step's error.
 esp_err_t start_softap(uint8_t channel, int8_t tx_power_qdbm);
 
+// Changes the TX power while running (quarter-dBm, already capped at the board's limit).
+esp_err_t set_tx_power(int8_t tx_power_qdbm);
+
 // SSID actually in use, valid after start_softap succeeds. Points to static storage.
 const char* ssid();
 

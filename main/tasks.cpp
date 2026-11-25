@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <optional>
 
+#include "board/board.hpp"
 #include "buttons/buttons.hpp"
+#include "core/boot_record.hpp"
 #include "core/menu.hpp"
 #include "core/register_publish.hpp"
 #include "core/sensor_pipeline.hpp"
@@ -51,6 +53,10 @@ core::Settings boot_settings{};
 // The calibration offset (tenths of a degree F): written by the UI task when the menu saves
 // it, applied by the sensor task from its next sample.
 std::atomic<int16_t> offset_deci_f{0};
+// Liveness (#25): the sensor and net tasks count their rounds; the health task checks that
+// both keep moving.
+std::atomic<uint32_t> sensor_rounds{0};
+std::atomic<uint32_t> net_rounds{0};
 
 // The converter and grounded mode were set with thermocouple::configure() before the tasks.
 core::SensorPipeline sensor_pipeline{core::SensorConfig{}};
@@ -80,6 +86,7 @@ void sensor_init() {
 }
 
 void sensor_step() {
+    sensor_rounds.fetch_add(1, std::memory_order_relaxed);
     static core::TcFault previous_fault = core::TcFault::BusError;
     static int32_t applied_offset = INT32_MIN;  // Not a valid offset: applies on the first step.
 
@@ -140,6 +147,7 @@ void net_init() {
 }
 
 void net_step() {
+    net_rounds.fetch_add(1, std::memory_order_relaxed);
     constexpr uint32_t kPublishPeriodMs = 250;
     const auto now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000);
     static uint32_t next_publish_ms = now_ms;
@@ -285,13 +293,9 @@ const char* thermal_reading_text(std::optional<core::DeciC> reading,
     return text;
 }
 
-void health_step() {
+void thermal_step(const core::ProbeState& snapshot) {
     static core::ThermalPolicy policy;
     const auto die = health::read_die();
-    core::ProbeState snapshot;
-    if (!state::snapshot(snapshot)) {
-        return;
-    }
     const auto ambient = snapshot.cold_junction;
     const auto level = policy.update(ambient, die);
     if (!state::update([=](core::ProbeState& s) {
@@ -318,6 +322,69 @@ void health_step() {
     if (level == core::ThermalLevel::Critical) {
         health::enter_protective_sleep();
     }
+}
+
+uint32_t smallest_stack_free();  // Defined after the task table.
+
+// A task that stopped running its rounds without tripping the watchdog (e.g. never scheduled
+// again) is a hang too: panic so it reboots and leaves a coredump (R3), shown as "Crash".
+void check_liveness(uint32_t now_ms) {
+    static core::StallDetector sensor;
+    static core::StallDetector net;
+    if (sensor.update(sensor_rounds.load(std::memory_order_relaxed), now_ms)) {
+        esp_system_abort("sensor task stopped running for 10 s");
+    }
+    if (net.update(net_rounds.load(std::memory_order_relaxed), now_ms)) {
+        esp_system_abort("net task stopped running for 10 s");
+    }
+}
+
+// Memory margins for Diagnostics, every 10 s (the stack scan reads every task's stack).
+void measure_memory(uint32_t now_ms) {
+    constexpr uint32_t kPeriodMs = 10'000;
+    static bool measured = false;
+    static uint32_t last_ms = 0;
+    if (measured && now_ms - last_ms < kPeriodMs) {
+        return;
+    }
+    measured = true;
+    last_ms = now_ms;
+    const uint32_t heap = esp_get_minimum_free_heap_size();
+    const uint32_t stack = smallest_stack_free();
+    state::update([=](core::ProbeState& s) {
+        s.min_free_heap = heap;
+        s.min_stack_free = stack;
+    });
+}
+
+// The power warning ends after kPowerCalmS without a dip (R2): full Wi-Fi power again.
+void end_power_warning_when_calm(const core::ProbeState& snapshot, uint32_t uptime_s) {
+    if (!snapshot.power_warning || uptime_s < core::kPowerCalmS) {
+        return;
+    }
+    health::clear_brownouts();
+    const int8_t tx = core::effective_tx_power_qdbm(boot_settings.tx_power_qdbm,
+                                                    board::kBoard.wifi_max_tx_power_qdbm);
+    (void)net::set_tx_power(tx);  // Logged by net on failure; the AP keeps working either way.
+    state::update([](core::ProbeState& s) {
+        s.power_warning = false;
+        s.brownouts = 0;
+    });
+    ESP_LOGI(kTag, "no power dips for %lu min: power warning cleared, Wi-Fi power restored",
+             static_cast<unsigned long>(core::kPowerCalmS / 60));
+}
+
+void health_step() {
+    const int64_t now_us = esp_timer_get_time();
+    const auto now_ms = static_cast<uint32_t>(now_us / 1000);
+    check_liveness(now_ms);
+    measure_memory(now_ms);
+    core::ProbeState snapshot;
+    if (!state::snapshot(snapshot)) {
+        return;
+    }
+    end_power_warning_when_calm(snapshot, static_cast<uint32_t>(now_us / 1'000'000));
+    thermal_step(snapshot);  // Last: Critical doesn't return (protective sleep).
 }
 
 struct Task {
@@ -388,6 +455,21 @@ void start_tasks(const core::Settings& settings) {
         }
     }
 }
+
+namespace {
+
+uint32_t smallest_stack_free() {
+    uint32_t smallest = UINT32_MAX;
+    for (const auto& task : tasks) {
+        if (task.handle != nullptr) {
+            const uint32_t free_bytes = uxTaskGetStackHighWaterMark(task.handle);
+            smallest = free_bytes < smallest ? free_bytes : smallest;
+        }
+    }
+    return smallest == UINT32_MAX ? 0 : smallest;
+}
+
+}  // namespace
 
 void log_stack_high_water() {
     for (const auto& task : tasks) {

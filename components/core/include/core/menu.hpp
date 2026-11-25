@@ -37,7 +37,7 @@ enum class Mode : uint8_t {
     Closed,         // Normal screens. Holding OK opens the menu.
     List,           // The item list with a cursor.
     Edit,           // One setting, full screen: UP/DOWN change it, OK saves, BACK cancels.
-    Diagnostics,    // Read-only information. Any button goes back.
+    Diagnostics,    // Read-only, two pages: UP/DOWN switch pages, OK or BACK go back.
     ConfirmReset,   // "Reset all settings?" Holding OK confirms; UP, DOWN or BACK go back.
     RestartPrompt,  // A saved setting needs a restart. Holding OK restarts, BACK means later.
 };
@@ -80,6 +80,8 @@ class Menu {
 
     Mode mode() const { return mode_; }
     Item cursor() const { return cursor_; }
+    // 0 or 1 while in Diagnostics (0 = for staff, 1 = restarts, power, memory).
+    uint8_t diagnostics_page() const { return diagnostics_page_; }
     // What is saved: after Action::Save this is what to persist and apply.
     const Settings& settings() const { return saved_; }
     // The value being edited (equal to settings() outside Edit).
@@ -95,7 +97,9 @@ class Menu {
     Mode mode_{Mode::Closed};
     Item cursor_{Item::TcChip};
     uint32_t last_press_ms_{0};
+    uint8_t diagnostics_page_{0};
 };
+inline constexpr uint8_t kDiagnosticsPages = 2;
 
 // Factory reset at power-on: OK held from boot for this long resets the settings. A way back
 // from settings that make the probe hard to use (a flipped screen, the wrong chip).

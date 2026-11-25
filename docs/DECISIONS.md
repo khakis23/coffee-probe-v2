@@ -118,3 +118,18 @@ need an extra managed component, a new dependency), and the framebuffer and font
   modes for settings changed once in the probe's life.
 - **The calibration offset is in °F** (the unit staff see), stored in tenths, converted to tenths of °C
   for the sensor pipeline.
+
+## D-013 · 2026-11-24 · Restart and power-dip diagnostics (Claude)
+
+- **Counts live in RTC no-init memory**, not NVS: they describe this power-up, so a power-off should
+  clear them, and nothing is written to flash on a crash or a brownout. A magic + check field rejects
+  the random contents after a power-on.
+- **Power warning after 2 dips** since power-on: one can be a fluke at plug-in. If RTC memory doesn't
+  survive a brownout on the C3 (unverified; #26 checks), each dip looks like a fresh record, so a
+  brownout with no valid record warns at once instead.
+- **The warning clears after 30 min without a dip** and full Wi-Fi power returns (R2: recover without
+  a power cycle). A dip resets the chip, so uptime without a reset is time without a dip.
+- **Liveness counters** for the sensor and net tasks, checked by the health task: a stall of 10 s
+  panics. The task watchdog already catches a task stuck inside a step; this catches one that stopped
+  being scheduled.
+

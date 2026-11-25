@@ -109,11 +109,12 @@ before the protective sleep. Burn-in protection comes later.
   TOO HOT closes it.
 - Items: Probe chip, Grounded tip, Offset (±10.0 °F, 0.1 per press, 1.0 per hold), Wi-Fi channel (1/6/11),
   Wi-Fi power (Auto/Low/Medium/High, capped at the board's limit), Brightness (1–4), Flip screen, Show
-  password, Diagnostics (firmware, uptime, box and chip temperatures, Wi-Fi devices), Factory reset.
+  password, Diagnostics (two pages, UP/DOWN switch: firmware, uptime, box and chip temperatures, Wi-Fi devices;
+  then last reset, restarts, crashes, power dips, lowest free memory, smallest stack headroom), Factory reset.
 - Editor: full screen, the value large, "OK save BACK cancel". Offset, brightness, flip and show password
   apply at once; probe chip, grounded tip and both Wi-Fi settings are set up at boot, so saving them asks
   "Restart to apply this change?" (a held OK restarts, so a double tap can't; BACK keeps it for the
-  next power-on). Diagnostics: any button goes back.
+  next power-on). Diagnostics: OK or BACK go back.
 - Factory reset: from the menu (confirm with a held OK), or by holding OK from power-on for 5 s with an
   on-screen countdown (letting go cancels). Both erase the saved settings; the build options are the
   factory default for the probe chip and grounded mode (D-012).
@@ -137,8 +138,8 @@ Failure mode → how we handle it:
 - **Stale TCP connections**: 4 socket slots, 10 s idle timeout, lwIP keepalive (~11 s to detect a vanished laptop), oldest evicted when full. Evicting needs `accept()` first, so a 5th socket exists only until the oldest is closed in the same call.
 - **Net task never blocks**: it runs every 20 ms (`vTaskDelayUntil`), `select()` polls with zero timeout, recv/send are non-blocking, at most 2 accepts per round and existing clients are served first. The idle task always gets CPU on the single core.
 - **Torn reads**: every 250 ms the net task copies a StateStore snapshot into the register block; the server (same task) never reads StateStore directly. If the state lock times out, the fault value is published rather than a held one.
-- **Crash or hang**: task watchdog on our tasks, liveness counters for the server task, panic → reboot, coredump to flash, reset reason + boot count + last-crash flag on the Diagnostics screen.
-- **Power dips during Wi-Fi TX bursts (~350 mA)**: brownout detector, brownout count in RTC memory. After repeated brownouts, boot with low TX power and show "Check USB cable/power". Hardware: 220–470 µF bulk capacitor.
+- **Crash or hang**: task watchdog on our tasks; the health task also checks that the sensor and net tasks keep counting their rounds (10 s without one → panic); panic → reboot, coredump to flash. The last reset's cause, restarts and crashes since power-on are on the Diagnostics screen (page 2) and in the boot log (#25).
+- **Power dips during Wi-Fi TX bursts (~350 mA)**: brownout detector, power-dip count in RTC memory (`core::BootRecord`, D-013). After 2 dips since power-on (or 1, if RTC memory turns out not to survive a brownout), boot with Wi-Fi at 8 dBm and alternate the top line with an inverted "Check USB cable/power". After 30 min without a dip both clear and full power returns (R2). Hardware: 220–470 µF bulk capacitor.
 - **OLED glitch from ESD or a brownout**: I2C timeouts + bus reset, and the setup sequence is resent every 30 s with a full redraw. Pixel shift and dimming against burn-in come after the MVP (#20).
 - **Corrupted settings**: versioned struct + CRC; invalid → defaults. NVS only written on an explicit save. Factory reset by holding OK at boot.
 - **Boot time**: splash < 300 ms, network up in ~2 s.

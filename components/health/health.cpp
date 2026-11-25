@@ -2,8 +2,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 #include "driver/temperature_sensor.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
@@ -22,6 +24,41 @@ constexpr uint64_t kSleepDurationUs = 60'000'000;
 constexpr uint32_t kUiWaitMs = 1500;
 constexpr uint32_t kWdtStepMs = 100;
 
+// Survives restarts, panics, watchdog resets and deep sleep; random after a power-on, which the
+// record's magic and check catch. Raw bytes, not a BootRecord: a C++ object with default member
+// initializers would be zeroed by a static constructor at every boot, defeating "noinit".
+RTC_NOINIT_ATTR uint8_t rtc_record[sizeof(core::BootRecord)];
+core::BootRecord current_record{};  // app_main writes it once at boot; the health task after.
+
+core::BootRecord read_rtc_record() {
+    core::BootRecord r{};
+    std::memcpy(&r, rtc_record, sizeof(r));
+    return r;
+}
+
+void write_rtc_record(const core::BootRecord& r) { std::memcpy(rtc_record, &r, sizeof(r)); }
+
+core::ResetCause cause_from(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON:
+            return core::ResetCause::PowerOn;
+        case ESP_RST_SW:
+            return core::ResetCause::Software;
+        case ESP_RST_PANIC:
+            return core::ResetCause::Crash;
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT:
+            return core::ResetCause::Watchdog;
+        case ESP_RST_BROWNOUT:
+            return core::ResetCause::Brownout;
+        case ESP_RST_DEEPSLEEP:
+            return core::ResetCause::DeepSleep;
+        default:
+            return core::ResetCause::Other;
+    }
+}
+
 temperature_sensor_handle_t sensor = nullptr;
 bool sensor_enabled = false;
 int64_t last_init_failure_us = -kRetryIntervalUs;
@@ -36,6 +73,20 @@ void warn_sensor_error(const char* operation, esp_err_t error) {
 }
 
 }  // namespace
+
+BootInfo record_boot() {
+    const core::BootRecord stored = read_rtc_record();
+    const core::ResetCause cause = cause_from(esp_reset_reason());
+    BootInfo info{core::next_boot_record(stored, cause), cause, core::boot_record_valid(stored)};
+    write_rtc_record(info.record);
+    current_record = info.record;
+    return info;
+}
+
+void clear_brownouts() {
+    current_record = core::cleared_brownouts(current_record);
+    write_rtc_record(current_record);
+}
 
 esp_err_t init() {
     if (sensor_enabled) {
