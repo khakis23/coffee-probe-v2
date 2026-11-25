@@ -5,8 +5,15 @@ Firmware is a standard ESP-IDF CMake project targeting the **ESP32-C3**.
 | Tool     | Version on this machine | Location                          |
 |----------|-------------------------|-----------------------------------|
 | ESP-IDF  | v5.3.1                  | `~/esp/esp-idf`                   |
+| ESP-IDF  | v6.0.3                  | `~/esp/esp-idf-v6.0`              |
 | Toolchain| riscv32-esp-elf GCC 13.2| `~/.espressif/tools`              |
 | CLion    | 2025.3                  | `/Applications/CLion.app`         |
+
+**Supported ESP-IDF versions:** v5.3.x and v6.0.x. CI builds every change on v5.3.1 and v6.0.3, and the
+top-level `CMakeLists.txt` refuses any other version, since nothing else has been checked against the
+reliability rules. Which of the two ships is decided on the first wired board (#2); v6 is the target
+because it bounds the I2C bus-clear wait (see `components/display`). Never source both `export.sh`
+files in one shell; the scripts use a clean environment for this reason.
 
 ## Command line
 
@@ -98,9 +105,10 @@ with a profile whose toolchain is the system one (not `ESP-IDF`).
 CLion recognises doctest: click the gutter ▶ next to a `TEST_CASE` to run or debug just that test,
 or run the `core_tests` target for all of them.
 
-**CI**: `scripts/ci-local.sh` is the CI (see below). `.github/workflows/ci.yml` has the same jobs but is manual-only (D-009); it runs these host tests plus firmware builds (generic and xiao,
-IDF v5.3.1 and v6.0.3, plus generic with bring-up diagnostics on, on both IDF versions) on every PR and push to `main`.
-A failing test or build turns the PR check red. The v6.0.3 jobs are allowed to fail until v6 support lands (#1/#2).
+**CI**: `scripts/ci-local.sh` is the CI (see below) and the only merge gate (D-009). `.github/workflows/ci.yml`
+has the same jobs (host tests plus firmware builds: generic and xiao on IDF v5.3.1 and v6.0.3, plus generic
+with bring-up diagnostics on both versions) but runs only when started by hand from GitHub's Actions tab.
+Every job, v6 included, must pass.
 
 **Local CI**: `scripts/ci-local.sh` runs the same jobs on the Mac before anything is pushed: the rule
 checks in `scripts/guards.sh`, the host tests, and the firmware builds, using the native IDF installs
@@ -137,6 +145,21 @@ Alternative without the menu: put `CONFIG_PROBE_BRINGUP_DIAG=y` in a file such a
    Touch the thermocouple tip and watch the TC reading rise.
 
 **Turn it off again** before normal work: untick it in menuconfig (or delete `sdkconfig` and rebuild without the extra defaults file). Never commit it into `sdkconfig.defaults`.
+
+## Fault-test firmware (#26)
+
+For the fault-injection session only: a build that fails on purpose once, 30 s after power-on, so you can
+check that the probe restarts by itself and reports why.
+
+```bash
+scripts/flash.sh --fault hang    # health task stops feeding the watchdog: expect "Last reset: Freeze"
+scripts/flash.sh --fault crash   # deliberate panic: expect "Last reset: Crash", "Crash record: Saved"
+```
+
+After its own restart it runs normally (so the reason can be read on Diagnostics page 2 or in the boot
+log); it faults again only after a power-on or another kind of restart. The build prints a CMake warning,
+and `scripts/guards.sh` refuses it in committed defaults and in every CI build. **Reflash the normal
+firmware (`scripts/flash.sh`) before the probe goes back to staff.**
 
 ## Board notes
 

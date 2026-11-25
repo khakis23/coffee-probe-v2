@@ -24,6 +24,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "health/health.hpp"
+#include "sdkconfig.h"
 #include "net/modbus_server.hpp"
 #include "net/net.hpp"
 #include "net/softap_config.hpp"
@@ -396,6 +397,28 @@ void end_power_warning_when_calm(const core::ProbeState& snapshot, uint32_t upti
              static_cast<unsigned long>(core::kPowerCalmS / 60));
 }
 
+#if CONFIG_PROBE_FAULT_TEST_HANG || CONFIG_PROBE_FAULT_TEST_CRASH
+// Fault-test builds only (#26, Kconfig PROBE_FAULT_TEST): fail on purpose 30 s after power-on,
+// once. After the probe's own restart (reset cause Freeze or Crash) it runs normally, so the
+// tester can read the reason on Diagnostics.
+void fault_test(const core::ProbeState& snapshot, uint32_t uptime_s) {
+    constexpr uint32_t kFaultAfterS = 30;
+    const bool own_restart = snapshot.reset_cause == core::ResetCause::Watchdog ||
+                             snapshot.reset_cause == core::ResetCause::Crash;
+    if (own_restart || uptime_s < kFaultAfterS) {
+        return;
+    }
+#if CONFIG_PROBE_FAULT_TEST_HANG
+    ESP_LOGE(kTag, "FAULT TEST: health task freezing; the task watchdog should restart the probe");
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));  // Yields, so only this task's watchdog feed stops.
+    }
+#else
+    esp_system_abort("FAULT TEST: deliberate crash");
+#endif
+}
+#endif
+
 void health_step() {
     const int64_t now_us = esp_timer_get_time();
     const auto now_ms = static_cast<uint32_t>(now_us / 1000);
@@ -406,6 +429,9 @@ void health_step() {
         return;
     }
     end_power_warning_when_calm(snapshot, static_cast<uint32_t>(now_us / 1'000'000));
+#if CONFIG_PROBE_FAULT_TEST_HANG || CONFIG_PROBE_FAULT_TEST_CRASH
+    fault_test(snapshot, static_cast<uint32_t>(now_us / 1'000'000));
+#endif
     thermal_step(snapshot);  // Last: Critical doesn't return (protective sleep).
 }
 

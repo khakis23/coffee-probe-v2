@@ -1,0 +1,29 @@
+menu "CoffeeProbe fault tests"
+
+    choice PROBE_FAULT_TEST
+        prompt "Deliberate fault (test builds only)"
+        default PROBE_FAULT_TEST_NONE
+        help
+            For the fault-injection session (#26): makes the probe fail on purpose once,
+            30 s after power-on, to check that it restarts by itself and shows the reason on
+            the Diagnostics screen and in the boot log. It does not fault again right after its
+            own restart (so the reason can be read), only after a power-on or another restart. Never in committed defaults (guards.sh).
+            Build one with: scripts/flash.sh --fault hang (or crash).
+
+        config PROBE_FAULT_TEST_NONE
+            bool "None (normal firmware)"
+
+        config PROBE_FAULT_TEST_HANG
+            bool "Freeze: the health task stops feeding the watchdog"
+            help
+                Expected: task watchdog panic about 5 s later, reboot, Diagnostics shows
+                "Last reset: Freeze".
+
+        config PROBE_FAULT_TEST_CRASH
+            bool "Crash: the health task aborts"
+            help
+                Expected: panic, coredump, reboot, Diagnostics shows "Last reset: Crash" and
+                "Crash record: Saved".
+    endchoice
+
+endmenu

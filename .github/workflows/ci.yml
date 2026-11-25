@@ -30,9 +30,6 @@ jobs:
     name: Firmware (${{ matrix.board }}, IDF ${{ matrix.idf }}${{ matrix.diag && ', diag' || '' }})
     runs-on: ubuntu-latest
     container: espressif/idf:${{ matrix.idf }}
-    # v6.0.x builds are informational for now: v6 support is pending #1/#2, so a red v6 job
-    # must not fail the workflow. Remove this once the firmware builds cleanly on v6.
-    continue-on-error: ${{ startsWith(matrix.idf, 'v6') }}
     strategy:
       fail-fast: false
       matrix:
